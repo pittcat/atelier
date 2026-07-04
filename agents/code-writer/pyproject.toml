@@ -1,0 +1,56 @@
+[project]
+name = "code-writer"
+version = "0.1.0"
+description = "Atelier 平台下的代码编写 Agent：负责规划、实现、测试、提交。"
+readme = "docs/README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Atelier Team", email = "team@example.com" }]
+
+dependencies = [
+    "atelier-common>=0.1.0",
+    "langgraph>=0.2",
+    "deepagents>=0.2",
+    "langchain-core>=0.3",
+    "langchain>=0.3",
+    "langsmith>=0.3",
+    "langchain-anthropic>=0.2",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
+    "click>=8.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "langgraph-cli[inmem]>=0.2",
+]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+atelier-common = { path = "../../libs/common" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/code_writer"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP"]
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

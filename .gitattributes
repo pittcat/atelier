@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+# 强制 LF 换行（LangGraph 在不同 OS 间部署避免问题）
+*.py          eol=lf
+*.toml        eol=lf
+*.json        eol=lf
+*.md          eol=lf
+*.yml         eol=lf
+*.yaml        eol=lf
+Makefile      eol=lf

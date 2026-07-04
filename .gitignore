@@ -1,0 +1,70 @@
+# ---------- Build outputs ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+target/
+out/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ---------- Virtualenvs ----------
+.venv/
+venv/
+env/
+.python-version
+.python-version.bak
+
+# ---------- uv ----------
+.uv-cache/
+uv.lock.local
+
+# ---------- LangGraph / LangSmith ----------
+.langgraph/
+.langgraph_api/
+langgraph.local.yaml
+
+# ---------- IDE ----------
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# ---------- Workspace outputs ----------
+*.log
+logs/
+!ops/logs/.gitkeep
+
+# ---------- Secrets ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---------- Node (gateway UI 备用) ----------
+node_modules/
+.next/
+dist-ui/
+
+# ---------- Agent-specific runtime ----------
+agents/*/.workspace/
+agents/*/checkpoints.db
+agents/*/checkpoints.db-journal
+agents/*/.eval-cache/
+
+# ---------- Claude Code session artifacts ----------
+.agents/
+task.md
+skills-lock.json

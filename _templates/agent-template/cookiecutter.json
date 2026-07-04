@@ -1,0 +1,23 @@
+{
+  "project_name": "Atelier",
+  "agent_slug": "my-agent",
+  "agent_pascal": "MyAgent",
+  "agent_upper": "MY_AGENT",
+  "agent_display_name": "My Agent",
+  "agent_description": "A new agent in the Atelier platform.",
+  "model_default": "claude-opus-4-8",
+  "model_subagent": "claude-haiku-4-5-20251001",
+  "include_docker": ["yes", "no"],
+  "include_mcp_github": ["no", "yes"],
+  "include_mcp_docs": ["yes", "no"],
+  "include_mcp_filesystem": ["no", "yes"],
+  "_load_claude_global_removed_note": "硬规矩 8：禁止加载 ~/.claude/skills 等全局配置；开关已删除。",
+  "load_local_skills_dir": ["./skills", "none"],
+  "load_skills_from_github": ["none", ""],
+  "checkpointer_kind": ["memory", "postgres"],
+  "use_uv": ["yes", "no"],
+  "enable_interrupt": ["yes", "no"],
+  "agent_version": "0.1.0",
+  "author_name": "Atelier Team",
+  "author_email": "team@example.com"
+}

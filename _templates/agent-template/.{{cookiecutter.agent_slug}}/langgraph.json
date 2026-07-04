@@ -1,0 +1,12 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "{{ cookiecutter.agent_slug }}": "./src/{{ cookiecutter.agent_slug }}/agent.py:agent"
+  },
+  "env": "./.env",
+  "python_version": "3.11",
+  "dockerfile_lines": [],
+  "build": {
+    "dockerfile": "Dockerfile"
+  }
+}
