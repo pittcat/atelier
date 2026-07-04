@@ -144,6 +144,8 @@ make up    AGENT=<slug>                            # 启动 langgraph up
 | 检查项目结构 | `make smoke` 或 `pytest tests/test_atelier_layout.py -q` |
 | 单 Agent 测试失败 | `cd agents/<slug> && TEST=tests/unit/test_xxx.py make test` |
 | 跑通不了、找不到文件 | 先 `make smoke`,看 `scripts/smoke.sh` 的输出 |
+| 已知 bug / 多组件交互出错 | 看 `docs/solutions/`(按 category 组织的 post-mortems,YAML frontmatter 含 `module` / `tags` / `problem_type`) |
+| 项目核心术语(`Agent` / `SubAgent` / `LangGraph Studio` / `Checkpointer` 等) | `CONCEPTS.md` 在仓库根 |
 
 ## Env 关键变量
 

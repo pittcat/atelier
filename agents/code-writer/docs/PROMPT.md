@@ -25,6 +25,7 @@
 | 日期 | 版本 | 改动 | 原因 |
 |------|------|------|------|
 | 2026-07-04 | 0.1.0 | 初版（模板 + 示例混合） | atelier 平台搭建 |
+| 2026-07-04 | 0.1.1 | `llm.py` 支持 `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_CUSTOM_HEADER`（Anthropic 兼容三方如 Minimax 接入）；新增 `resolve_minimax_env()` 辅助 | 让 `llm.py` 默认就能切换三方 endpoint，不改业务代码 |
 
 ## 评测
 
