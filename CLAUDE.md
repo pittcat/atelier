@@ -178,6 +178,16 @@ make up    AGENT=<slug>                            # 启动 langgraph up
 
 模板支持本地 `./skills/` + Claude Code 全局 `~/.claude/skills/` + GitHub 远程三种 skill 来源,通过 `skills_loader.py` + `SkillsMiddleware` 装配。MCP servers 在 `mcp_servers.py` 懒加载。详见模板生成后的 `docs/MCP_AND_SKILLS.md`。
 
+## 按需读上游源码
+
+仓库根的 `.source_code` 文件列出本地拉下来的上游库(每行一个绝对路径,例如 `/Users/pittcat/Dev/Python/deepagents`)。**不是每次回答都去读**,只在以下情况才打开:
+
+- 用户直接问 `.source_code` 里某个库怎么用、或问"我的代码用 X 失败了"。
+- 用通用知识回答过一次,再答一次仍不自洽(两次答案冲突) —— 这时去翻源码核对,不要继续猜。
+- review / test 阶段,代码改动触到某个上游库,改动里有对该库 API / 行为的假设。
+
+默认走通用知识;触发条件命中再读,读完把结论和路径回给用户(便于人复核)。
+
 ## 与全局 CLAUDE.md 的关系
 
 顶层 `~/.claude/CLAUDE.md` 的全局规约(中文回答、Mermaid 验证、RTK 工具优先、Memory 操作、压缩规则等)在本仓库**全部继承**,优先级仍按:用户指令 > 本仓库 `AGENTS.md` > 本文件 > 全局 `CLAUDE.md`。

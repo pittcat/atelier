@@ -1,11 +1,19 @@
 """命令行入口。
 
-    python -m code_writer.cli run "为 X 加一个新接口"
-    python -m code_writer.cli replay <thread_id>
+两种调用方式:
+  1. 在仓库里直接跑:  python -m code_writer.cli run "..."
+       — .env 自动从 ../agents/code-writer/.env 加载(相对于源码位置)
+       — WORKDIR = 当前 cwd
+  2. 装成系统 CLI 后: code-writer run "..."
+       — .env 加载顺序: $ATELIER_HOME/.env > ~/.atelier/code-writer/.env > <site-packages parent>/.env
+       — WORKDIR = 当前 cwd(用户在哪个项目目录就改哪个项目)
+
+    code-writer replay <thread_id>
 """
 
 from __future__ import annotations
 
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -13,15 +21,48 @@ from pathlib import Path
 import click
 from dotenv import load_dotenv
 
-# 提前 load .env,override=True 强制覆盖 shell 残留 env(用户 ~/.zshrc 或者
-# CC Switch 注入的 ANTHROPIC_BASE_URL=http://127.0.0.1:15721 之类的旧代理 env)。
-# 路径计算:cli.py 在 src/code_writer/cli.py,所以 _ROOT 应该是 parents[2]
-#   parents[0] = code_writer/
-#   parents[1] = src/
-#   parents[2] = code-writer/  ← 这就是 _ROOT
-_ROOT = Path(__file__).resolve().parents[2]   # agents/code-writer/
-_dotenv_path = _ROOT / ".env"
-load_dotenv(_dotenv_path, override=True)
+# Resolve .env 路径。优先级:
+#   1. $ATELIER_HOME 环境变量(全局配置,推荐用于已安装的 CLI)
+#   2. <package 源码位置>/../../../.env —— site-packages/code_writer/cli.py → 回到仓库根
+#   3. <cli.py parents[2]>/.env —— 源码在 agents/code-writer/ 时直接定位
+_HERE = Path(__file__).resolve()
+_PKG_PARENT = _HERE.parents[1]   # code_writer/
+_SRC_PARENT = _HERE.parents[2]   # src/  (when run from source)
+_AGENT_PARENT = _HERE.parents[3]  # code-writer/  (when run from source)
+_REPO_PARENT = _HERE.parents[4]   # atelier/   (when run from source)
+
+
+def _resolve_dotenv_path() -> Path | None:
+    # 1. 显式 ATELIER_HOME
+    atelier_home = os.environ.get("ATELIER_HOME")
+    if atelier_home:
+        p = Path(atelier_home).expanduser() / ".env"
+        if p.is_file():
+            return p
+    # 2. 全局默认 ~/.atelier/code-writer/.env
+    p = Path.home() / ".atelier" / "code-writer" / ".env"
+    if p.is_file():
+        return p
+    # 3. 源码运行模式:cli.py 在 src/code_writer/cli.py,所以 agents/code-writer/.env
+    candidate = _AGENT_PARENT / ".env"
+    if candidate.is_file():
+        return candidate
+    # 4. 已安装模式:从 site-packages 倒推 atelier 仓库根(假设标准 layout)
+    candidate = _REPO_PARENT / ".env"
+    if candidate.is_file():
+        return candidate
+    return None
+
+
+_dotenv_path = _resolve_dotenv_path()
+if _dotenv_path is not None:
+    load_dotenv(_dotenv_path, override=True)
+else:
+    print(
+        "[cli] WARN: .env not found. Set ATELIER_HOME or create "
+        "~/.atelier/code-writer/.env, or run from agent source directory.",
+        file=sys.stderr,
+    )
 
 # 重要:deepagents 0.6 默认 install AnthropicPromptCachingMiddleware,它无条件给
 # ChatAnthropic payload 加 cache_control 字段。minimax 部分版本不接受这个字段

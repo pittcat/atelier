@@ -20,6 +20,9 @@ dependencies = [
     "click>=8.1",
 ]
 
+[project.scripts]
+code-writer = "code_writer.cli:cli"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
