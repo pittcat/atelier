@@ -39,8 +39,8 @@ def _resolve_dotenv_path() -> Path | None:
         p = Path(atelier_home).expanduser() / ".env"
         if p.is_file():
             return p
-    # 2. 全局默认 ~/.atelier/code-writer/.env
-    p = Path.home() / ".atelier" / "code-writer" / ".env"
+    # 2. 全局默认 ~/.atelier/code-writer/.env（用 expanduser，避免 Path.home() /）
+    p = Path("~/.atelier/code-writer/.env").expanduser()
     if p.is_file():
         return p
     # 3. 源码运行模式:cli.py 在 src/code_writer/cli.py,所以 agents/code-writer/.env

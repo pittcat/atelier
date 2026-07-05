@@ -194,11 +194,12 @@ patterns_to_forbid=(
 )
 hits=0
 for p in "${patterns_to_forbid[@]}"; do
-  # 收集命中的文件路径（去重、去掉 __pycache__）；
-  # 测试目录（tests/）本身就是为了验证"禁止"逻辑故意构造的，跳过。
+  # 收集命中的文件路径(去重、去掉 __pycache__);
+  # 测试目录(tests/)本身就是为了验证"禁止"逻辑故意构造的,跳过。
   files=$(grep -rl --include="*.py" -F "$p" \
       "$ROOT/_templates/agent-template" \
-      "$ROOT/agents/code-writer" 2>/dev/null \
+      "$ROOT/agents/code-writer" \
+      "$ROOT/agents/compound-builder" 2>/dev/null \
       | grep -v __pycache__ \
       | grep -v '/.venv/' \
       | grep -v '/tests/' \
@@ -241,6 +242,64 @@ if grep -q "硬规矩\|规则 #8\|技能.*仅项目级\|Skills 与 MCP 仅项目
   pass "AGENTS.md 包含规则 #8"
 else
   fail "AGENTS.md 缺少规则 #8（Skills/MCP 仅项目级）"
+fi
+
+# -----------------------------------------------------------------
+header "9. Compound Builder (新 Agent)"
+# -----------------------------------------------------------------
+CB=agents/compound-builder
+if [ -d "$CB" ]; then
+  pass "$CB/ 目录存在"
+  for f in pyproject.toml langgraph.json Makefile .env.example AGENTS.md Dockerfile \
+           src/compound_builder/__init__.py src/compound_builder/agent.py \
+           src/compound_builder/state.py src/compound_builder/graph.py \
+           src/compound_builder/tools.py src/compound_builder/prompts.py \
+           src/compound_builder/interrupts.py src/compound_builder/cli.py \
+           src/compound_builder/checkpointer.py src/compound_builder/tracing.py \
+           src/compound_builder/llm.py src/compound_builder/skills_loader.py \
+           src/compound_builder/mcp_servers.py src/compound_builder/subagents.py \
+           src/compound_builder/nodes/__init__.py src/compound_builder/nodes/coordinator.py \
+           src/compound_builder/nodes/executor.py src/compound_builder/nodes/validator.py \
+           src/compound_builder/nodes/fixer.py src/compound_builder/nodes/review_coordinator.py \
+           src/compound_builder/nodes/dimension_reviewer.py \
+           src/compound_builder/nodes/review_synthesizer.py \
+           src/compound_builder/nodes/shipper.py src/compound_builder/nodes/reporter.py \
+           src/compound_builder/nodes/progress_steward.py \
+           docs/README.md docs/PROMPT.md docs/INTERRUPTS.md docs/MCP_AND_SKILLS.md \
+           tests/unit/test_tools.py tests/unit/test_phase_authority.py \
+           tests/unit/test_repair_budget.py \
+           tests/conftest.py; do
+    if [ -f "$CB/$f" ]; then pass "$CB/$f"; else fail "$CB/$f"; fi
+  done
+else
+  fail "$CB/ 不存在"
+fi
+
+if [ -f "$CB/src/compound_builder/tools.py" ]; then
+  # 注意:docstring 中的 "git_push" / "git_push_tool" 是允许的(反向断言字符串)。
+  # 只把真注册(def git_push(...) 或 @tool 上面的 def)算作禁用。
+  if grep -Eq 'def +git_push\b' "$CB/src/compound_builder/tools.py"; then
+    fail "compound-builder tools.py 不应定义 def git_push 工具"
+  else
+    pass "compound-builder tools.py 未定义 git_push 工具"
+  fi
+fi
+
+# Gateway 是否注册 compound-builder
+if grep -q '"compound-builder"' "$ROOT/gateway/api/registry.py"; then
+  pass "gateway registry 含 compound-builder"
+else
+  fail "gateway registry 缺 compound-builder"
+fi
+if grep -q 'compound_builder_router' "$ROOT/gateway/api/routers/__init__.py"; then
+  pass "routers/__init__.py 接入 compound_builder_router"
+else
+  fail "routers/__init__.py 未接入 compound_builder_router"
+fi
+if [ -f "$ROOT/gateway/api/routers/compound_builder.py" ]; then
+  pass "gateway/api/routers/compound_builder.py 存在"
+else
+  fail "gateway/api/routers/compound_builder.py 缺失"
 fi
 
 # -----------------------------------------------------------------

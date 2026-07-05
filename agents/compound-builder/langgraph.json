@@ -1,0 +1,12 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "compound_builder": "./src/compound_builder/agent.py:agent"
+  },
+  "env": "./.env",
+  "python_version": "3.11",
+  "dockerfile_lines": [],
+  "build": {
+    "dockerfile": "Dockerfile"
+  }
+}

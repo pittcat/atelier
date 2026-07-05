@@ -1,0 +1,11 @@
+{
+  "name": "compound-builder-fixtures",
+  "version": "0.1.0",
+  "description": "4 Plan fixtures for LangSmith dataset, covering TDD / characterization / refactor / trivial categories (plan R28).",
+  "fixtures": [
+    {"path": "plan-tdd.md", "category": "tdd", "expected_units": 5, "expected_pass": true},
+    {"path": "plan-refactor.md", "category": "refactor", "expected_units": 3, "expected_pass": true},
+    {"path": "plan-characterization.md", "category": "characterization", "expected_units": 3, "expected_pass": true},
+    {"path": "plan-trivial.md", "category": "trivial", "expected_units": 1, "expected_pass": true}
+  ]
+}
