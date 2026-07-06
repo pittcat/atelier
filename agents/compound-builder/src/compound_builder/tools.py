@@ -453,39 +453,144 @@ def validate_plan(plan_dict: dict) -> dict:
 # ============================================================
 # 测试入口自发现(R11 / KTD-5)
 # ============================================================
-@tool
-def discover_test_entry(workdir: str = ".") -> str:
-    """按优先级链发现测试入口命令。"""
-    p = Path(workdir)
-    pyproject = p / "pyproject.toml"
-    if pyproject.exists() and "[tool.pytest]" in pyproject.read_text(encoding="utf-8"):
-        return "pytest"
-    makefile = p / "Makefile"
-    if makefile.exists() and re.search(r"^test:", makefile.read_text(encoding="utf-8"), re.MULTILINE):
+_DISCOVER_ERROR_PREFIX = "[discover_test_entry] error:"
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _pytest_cmd_for_dir(directory: Path, *, root: Path) -> str | None:
+    """若 directory 像 pytest 项目,返回可执行的 pytest 命令(含必要 cd)。"""
+    pyproject = directory / "pyproject.toml"
+    if pyproject.exists():
+        text = _read_text(pyproject)
+        if "[tool.pytest]" in text or "pytest" in text:
+            if directory.resolve() == root.resolve():
+                return "pytest -v"
+            rel = directory.relative_to(root).as_posix()
+            return f"cd {rel} && pytest -v"
+    if (directory / "pytest.ini").exists():
+        if directory.resolve() == root.resolve():
+            return "pytest -v"
+        rel = directory.relative_to(root).as_posix()
+        return f"cd {rel} && pytest -v"
+    if (directory / "setup.cfg").exists() and "[tool:pytest]" in _read_text(directory / "setup.cfg"):
+        if directory.resolve() == root.resolve():
+            return "pytest -v"
+        rel = directory.relative_to(root).as_posix()
+        return f"cd {rel} && pytest -v"
+    tests_dir = directory / "tests"
+    if tests_dir.is_dir() and any(tests_dir.rglob("test_*.py")):
+        if directory.resolve() == root.resolve():
+            return "pytest -v"
+        rel = directory.relative_to(root).as_posix()
+        return f"cd {rel} && pytest -v"
+    return None
+
+
+def discover_test_entry_impl(workdir: str = ".") -> str | None:
+    """按优先级链发现测试入口;未找到返回 ``None``。"""
+    root = Path(workdir).resolve()
+
+    hit = _pytest_cmd_for_dir(root, root=root)
+    if hit:
+        return hit
+
+    makefile = root / "Makefile"
+    if makefile.exists() and re.search(r"^test:", _read_text(makefile), re.MULTILINE):
         return "make test"
-    if (p / "Cargo.toml").exists():
-        return "cargo test"
-    if (p / "package.json").exists():
-        pkg = json.loads((p / "package.json").read_text(encoding="utf-8"))
+
+    if (root / "Cargo.toml").exists():
+        return "cargo test --workspace"
+
+    pkg_json = root / "package.json"
+    if pkg_json.exists():
+        try:
+            pkg = json.loads(_read_text(pkg_json))
+        except json.JSONDecodeError:
+            pkg = {}
         if "test" in pkg.get("scripts", {}):
             return "npm test"
-    if (p / "go.mod").exists():
+
+    if (root / "go.mod").exists():
         return "go test ./..."
-    raise NoTestEntryError(f"no test entry discovered under {workdir}")
+
+    # 单子目录包(如 ralph-e2e/sorts/)
+    for child in sorted(root.iterdir()):
+        if not child.is_dir() or child.name.startswith("."):
+            continue
+        if child.name in {"node_modules", "venv", ".venv", "dist", "build", "__pycache__"}:
+            continue
+        hit = _pytest_cmd_for_dir(child, root=root)
+        if hit:
+            return hit
+
+    if list(root.rglob("test_*.py"))[:1]:
+        return "pytest -v"
+
+    return None
+
+
+def discover_test_entry_or_raise(workdir: str = ".") -> str:
+    """编程式调用;未找到时抛 ``NoTestEntryError``。"""
+    cmd = discover_test_entry_impl(workdir)
+    if cmd is None:
+        raise NoTestEntryError(f"no test entry discovered under {workdir}")
+    return cmd
+
+
+@tool
+def discover_test_entry(workdir: str = ".") -> str:
+    """按优先级链发现测试入口命令。未找到时返回错误文本(不抛异常,避免 agent 崩溃)。"""
+    cmd = discover_test_entry_impl(workdir)
+    if cmd is None:
+        return f"{_DISCOVER_ERROR_PREFIX} no test entry discovered under {workdir}"
+    return cmd
 
 
 @tool
 def run_tests(entry: str | None = None, workdir: str = ".") -> str:
     """自发现 test entry 并跑测试,返回 stdout/stderr 摘要。"""
-    cmd = entry or discover_test_entry.func(workdir)  # type: ignore[attr-defined]
-    proc = subprocess.run(
-        shlex.split(cmd),
-        cwd=workdir,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=300,
-    )
+    if entry:
+        cmd = entry
+    else:
+        discovered = discover_test_entry_impl(workdir)
+        if discovered is None:
+            return json.dumps(
+                {
+                    "entry": "",
+                    "returncode": 1,
+                    "stdout_tail": "",
+                    "stderr_tail": f"{_DISCOVER_ERROR_PREFIX} no test entry under {workdir}",
+                },
+                ensure_ascii=False,
+            )
+        cmd = discovered
+
+    # ``cd pkg && pytest`` 需要在 shell 中执行
+    if "&&" in cmd or "|" in cmd or ";" in cmd:
+        proc = subprocess.run(
+            cmd,
+            cwd=workdir,
+            shell=True,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    else:
+        proc = subprocess.run(
+            shlex.split(cmd),
+            cwd=workdir,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
     return json.dumps(
         {
             "entry": cmd,

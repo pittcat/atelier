@@ -50,8 +50,23 @@ def _unit_prompt(state: CompoundBuilderState, unit: dict[str, Any], *, mode: str
     if mode == "fix":
         lines.extend([
             "",
-            "VALIDATION FAILED. Fix the root cause, then ensure tests pass.",
+            "VALIDATION FAILED — Fixer mode (diagnose → fix):",
+            "1. Read last_error; reproduce failure; trace causal chain before editing.",
+            "2. Minimal fix; run related tests.",
+            "3. **Required:** ``git_commit`` with message:",
+            f"   fix(<scope>): {unit.get('id')} <root-cause one-liner>",
+            "",
             f"last_error:\n{state.get('last_error') or '(none)'}",
+        ])
+    elif unit.get("is_fix_unit"):
+        lines.extend([
+            "",
+            "FIX-UNIT mode — source of truth is this finding/fix-plan, not the original plan:",
+            f"approach / suggested fix: {unit.get('approach') or '(see finding)'}",
+            "",
+            "TDD: add/adjust tests proving the fix, then implement.",
+            "4. **Required:** ``git_commit`` with message:",
+            f"   fix(<scope>): {unit.get('id')} <short description>",
         ])
     else:
         lines.extend([
@@ -99,19 +114,22 @@ def run_unit_worker(
     system = SYSTEM_PROMPT_FIXER if mode == "fix" else SYSTEM_PROMPT_EXECUTOR
     user = _unit_prompt(state, unit, mode=mode)
 
-    from langgraph.prebuilt import create_react_agent
+    from compound_builder.react_agent import build_react_agent
 
     tools = [t for t in build_tools() if t.name in _WORKER_TOOL_NAMES]
     model = get_llm()
-    agent = create_react_agent(
+    agent = build_react_agent(
         model,
         tools,
         prompt=f"{system}\n\nModel: {resolve_default_model()}\nWorkdir: {wd}",
     )
-    result = agent.invoke(
-        {"messages": [("user", user)]},
-        config={"recursion_limit": int(os.getenv("ATELIER_WORKER_RECURSION_LIMIT", "40"))},
-    )
+    try:
+        result = agent.invoke(
+            {"messages": [("user", user)]},
+            config={"recursion_limit": int(os.getenv("ATELIER_WORKER_RECURSION_LIMIT", "40"))},
+        )
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError(str(e)) from e
     summary = _last_ai_text(result)
     progress(f"{'fixer' if mode == 'fix' else 'executor'}: unit {uid} done")
     return summary

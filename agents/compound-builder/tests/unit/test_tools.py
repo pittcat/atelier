@@ -50,7 +50,18 @@ def test_discover_test_entry_pyproject(tmp_path: Path):
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname="x"\n[tool.pytest]\nini=true\n', encoding="utf-8"
     )
-    assert discover_test_entry.func(str(tmp_path)) == "pytest"  # type: ignore[attr-defined]
+    assert discover_test_entry.func(str(tmp_path)) == "pytest -v"  # type: ignore[attr-defined]
+
+
+def test_discover_test_entry_nested_package(tmp_path: Path):
+    pkg = tmp_path / "sorts"
+    pkg.mkdir()
+    (pkg / "pyproject.toml").write_text(
+        '[project]\nname="sorts"\n[tool.pytest]\nini=true\n', encoding="utf-8"
+    )
+    (pkg / "tests").mkdir()
+    (pkg / "tests" / "test_x.py").write_text("def test_ok(): pass\n", encoding="utf-8")
+    assert discover_test_entry.func(str(tmp_path)) == "cd sorts && pytest -v"  # type: ignore[attr-defined]
 
 
 def test_discover_test_entry_makefile(tmp_path: Path):
@@ -59,10 +70,13 @@ def test_discover_test_entry_makefile(tmp_path: Path):
 
 
 def test_discover_test_entry_no_test(tmp_path: Path):
-    """无测试入口 → NoTestEntryError(R11)。"""
+    """无测试入口 → 返回错误文本(工具不抛异常)。"""
     (tmp_path / "README.md").write_text("x", encoding="utf-8")
+    out = discover_test_entry.func(str(tmp_path))  # type: ignore[attr-defined]
+    assert "error" in out.lower()
     with pytest.raises(NoTestEntryError):
-        discover_test_entry.func(str(tmp_path))  # type: ignore[attr-defined]
+        from compound_builder.tools import discover_test_entry_or_raise
+        discover_test_entry_or_raise(str(tmp_path))
 
 
 def test_git_commit_runs_add_first(tmp_path: Path, monkeypatch):

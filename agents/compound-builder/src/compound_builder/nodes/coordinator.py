@@ -91,10 +91,11 @@ def coordinator(state: CompoundBuilderState) -> dict[str, Any]:
             results_log=delta_results,
         )
 
-    # ---- 3. validator_failed → repair_budget ----
+    # ---- 3. validator_failed → repair_budget (unit_loop / fix_units only) ----
     if phase == "validator_failed":
+        resume = state.get("repair_resume_phase") or "unit_loop"
         budget_used = int(state.get("repair_budget_used", 0)) + 1
-        push("validator.failed", budget_used=budget_used)
+        push("validator.failed", budget_used=budget_used, resume_phase=resume)
         if budget_used > REPAIR_BUDGET:
             return delta(
                 phase="blocked",
@@ -103,10 +104,10 @@ def coordinator(state: CompoundBuilderState) -> dict[str, Any]:
                 decisions=delta_decisions,
                 results_log=delta_results,
             )
-        # 保持 validator_failed,让 graph 条件边路由到 fixer(不是 unit_loop→executor)
         return delta(
             phase="validator_failed",
             repair_budget_used=budget_used,
+            repair_resume_phase=resume,
             decisions=delta_decisions,
             results_log=delta_results,
         )
@@ -127,7 +128,10 @@ def coordinator(state: CompoundBuilderState) -> dict[str, Any]:
         if idx >= len(fix_units):
             push("fix_units.complete")
             return delta(phase="ship", decisions=delta_decisions, results_log=delta_results)
-        return {}
+        return delta(
+            decisions=[{"by": "coordinator", "event": "route.fix_units"}],
+            results_log=[{"event": "route.fix_units"}],
+        )
 
     # ---- 6. unit_loop → 条件边进 executor ----
     if phase == "unit_loop":

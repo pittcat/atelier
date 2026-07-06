@@ -3,13 +3,15 @@
 拓扑(plan R1-R4 + R12 + KTD-1/KTD-2/KTD-3):
 
   START
-   └─▶ coordinator ─┬─▶ executor  ─▶ validator ─▶ coordinator (next unit)
-                     ├─▶ fixer     ─▶ validator
+   └─▶ coordinator ─┬─▶ executor  ─▶ validator(node) ─▶ coordinator (next unit)
+                     ├─▶ fixer     ─▶ validator(node)
                      ├─▶ review_coordinator ─Send(map)─▶ dimension_reviewer ×6 ─▶ review_synthesizer
                      │                                                          │
                      │                                                          └─▶ coordinator
                      ├─▶ shipper ─▶ reporter ─▶ END
                      └─▶ END (blocked)
+
+``validator`` 节点是编排胶水;内层调用 ``validator_agent`` / ``reviewer_agent``(ReAct + structured 收尾)。
 
 10 个节点名称:
   coordinator / executor / validator / fixer / review_coordinator

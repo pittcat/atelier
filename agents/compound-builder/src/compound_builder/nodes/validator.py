@@ -1,4 +1,9 @@
-"""validator —— LLM 搜索测试入口 + 跑全量套件,pass/fail 由 exit code 决定。"""
+"""validator 节点 —— 外层 StateGraph 胶水;真正验证由 ``validator_agent`` 完成。
+
+本模块**不是** Validator 本身:只负责 commit gate、phase 路由、写 ``test.passed/failed``。
+与 ``nodes/executor.py`` 调用 ``worker.run_unit_worker`` 同理,这里调用
+``run_validator_agent``(独立 ReAct Agent,可读仓库 + 跑全量测试)。
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -6,8 +11,8 @@ from typing import Any
 from compound_builder.git_ops import verify_unit_commit_gate
 from compound_builder.nodes import delta
 from compound_builder.state import CompoundBuilderState, Phase
+from compound_builder.validator_agent import run_validator_agent
 from compound_builder.workdir_ctx import set_workdir
-from compound_builder.validator_worker import run_validator_worker
 from compound_builder.worker import is_dry_run
 
 
@@ -38,14 +43,14 @@ def _validate_unit(state: CompoundBuilderState, unit: dict[str, Any]) -> tuple[b
     if not commit_ok:
         return False, commit_err, "(commit-gate)"
 
-    outcome = run_validator_worker(state, unit)
+    outcome = run_validator_agent(state, unit)
     if outcome.passed:
         return True, "", outcome.command
     return False, outcome.output_tail, outcome.command
 
 
 def validator(state: CompoundBuilderState) -> dict[str, Any]:
-    """非 dry-run:LLM 搜索并跑全量测试;dry-run 仅检查 last_error。"""
+    """编排节点:调用 Validator Agent;dry-run 仅检查 last_error。"""
     phase = state.get("phase")
     target_kw = "fix_units" if phase == "fix_units" else "units"
     units = state.get(target_kw) or []

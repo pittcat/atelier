@@ -63,6 +63,10 @@ agents/*/.workspace/
 agents/*/checkpoints.db
 agents/*/checkpoints.db-journal
 agents/*/.eval-cache/
+agents/*/.compound_builder/
+
+# ---------- Local upstream source pointers (machine-specific paths) ----------
+.source_code
 
 # ---------- Claude Code session artifacts ----------
 .agents/
