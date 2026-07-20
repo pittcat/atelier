@@ -303,6 +303,85 @@ else
 fi
 
 # -----------------------------------------------------------------
+header "10. ModemLogAnalyzer (新 Agent)"
+# -----------------------------------------------------------------
+MLA=agents/modem-log-analyzer
+if [ -d "$MLA" ]; then
+  pass "$MLA/ 目录存在"
+  for f in pyproject.toml langgraph.json Makefile .env.example AGENTS.md Dockerfile \
+           src/modem_log_analyzer/__init__.py src/modem_log_analyzer/agent.py \
+           src/modem_log_analyzer/state.py src/modem_log_analyzer/tools.py \
+           src/modem_log_analyzer/prompts.py src/modem_log_analyzer/interrupts.py \
+           src/modem_log_analyzer/cli.py src/modem_log_analyzer/checkpointer.py \
+           src/modem_log_analyzer/tracing.py src/modem_log_analyzer/llm.py \
+           src/modem_log_analyzer/skills_loader.py src/modem_log_analyzer/mcp_servers.py \
+           src/modem_log_analyzer/subagents.py src/modem_log_analyzer/contracts.py \
+           src/modem_log_analyzer/env.py src/modem_log_analyzer/intake.py \
+           src/modem_log_analyzer/log_parser.py src/modem_log_analyzer/evidence.py \
+           src/modem_log_analyzer/command_catalog.py \
+           src/modem_log_analyzer/classification.py \
+           src/modem_log_analyzer/scenario_inference.py \
+           src/modem_log_analyzer/control_log_policy.py \
+           src/modem_log_analyzer/analysis_service.py src/modem_log_analyzer/report.py \
+           docs/README.md docs/PROMPT.md docs/INTERRUPTS.md docs/MCP_AND_SKILLS.md \
+           tests/__init__.py tests/conftest.py tests/acceptance/test_cli_contract.py \
+           tests/unit/test_contracts.py tests/unit/test_tool_registry.py \
+           tests/unit/test_skills_loader.py tests/unit/test_intake.py \
+           tests/unit/test_log_parser.py tests/unit/test_command_catalog.py \
+           tests/unit/test_classification.py tests/unit/test_control_log_policy.py \
+           tests/unit/test_report_renderer.py \
+           tests/integration/test_cli_intake.py \
+           tests/integration/test_agent_diagnosis.py \
+           tests/integration/test_interrupt_resume.py \
+           tests/integration/test_cli_analyze.py \
+           tests/integration/test_gateway.py \
+           tests/eval/test_datasets.py \
+           knowledge/modemcli_commands.yaml \
+           tests/fixtures/reference_case_52/evb.log \
+           tests/fixtures/reference_case_52/control.log \
+           tests/fixtures/reference_case_52/expected.json; do
+    if [ -f "$MLA/$f" ]; then pass "$MLA/$f"; else fail "$MLA/$f"; fi
+  done
+else
+  fail "$MLA/ 不存在"
+fi
+
+# 检查 console script
+if grep -q 'modem-log-analyzer' "$MLA/pyproject.toml"; then
+  pass "pyproject.toml 声明 console script"
+else
+  fail "pyproject.toml 未声明 modem-log-analyzer console script"
+fi
+
+# 检查 classification 枚举与 R13 一致
+for c in DEVICE_FAILURE_CONFIRMED ENVIRONMENT_FAILURE_INDICATED \
+         TEST_AUTOMATION_FAILURE_CONFIRMED NO_DEVICE_ANOMALY_FOUND \
+         DEVICE_EVIDENCE_INCOMPLETE MULTIPLE_POSSIBLE_CAUSES; do
+  if grep -q "\"$c\"" "$MLA/src/modem_log_analyzer/contracts.py"; then
+    pass "contracts.Classification 含 $c"
+  else
+    fail "contracts.Classification 缺 $c"
+  fi
+done
+
+# 检查 Gateway 注册
+if grep -q '"modem-log-analyzer"' "$ROOT/gateway/api/registry.py"; then
+  pass "gateway registry 含 modem-log-analyzer"
+else
+  fail "gateway registry 缺 modem-log-analyzer"
+fi
+if grep -q 'modem_log_analyzer_router' "$ROOT/gateway/api/routers/__init__.py"; then
+  pass "routers/__init__.py 接入 modem_log_analyzer_router"
+else
+  fail "routers/__init__.py 未接入 modem_log_analyzer_router"
+fi
+if [ -f "$ROOT/gateway/api/routers/modem_log_analyzer.py" ]; then
+  pass "gateway/api/routers/modem_log_analyzer.py 存在"
+else
+  fail "gateway/api/routers/modem_log_analyzer.py 缺失"
+fi
+
+# -----------------------------------------------------------------
 echo
 echo "════════════════════════════════════════════"
 echo "  PASS: $PASS    FAIL: $FAIL    SKIP: $SKIP"

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -64,9 +63,11 @@ async def get_history(thread_id: str, _: None = Depends(verify_token)):
     cfg = {"configurable": {"thread_id": thread_id}}
     history = []
     for state in agent.get_state_history(cfg):
-        history.append({
-            "created_at": str(state.created_at),
-            "next": state.next,
-            "values": state.values,
-        })
+        history.append(
+            {
+                "created_at": str(state.created_at),
+                "next": state.next,
+                "values": state.values,
+            }
+        )
     return {"thread_id": thread_id, "history": history}

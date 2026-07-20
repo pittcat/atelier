@@ -130,3 +130,184 @@ def test_compound_builder_routes_registered():
     init_text = (ROOT / "gateway/api/routers/__init__.py").read_text()
     assert "compound_builder_router" in init_text
     assert (ROOT / "gateway/api/routers/compound_builder.py").exists()
+
+
+# ============================================================
+# ModemLogAnalyzer 接入测试(Unit 1)
+# ============================================================
+def test_modem_log_analyzer_layout():
+    """Unit 1 验收: agents/modem-log-analyzer/ 骨架完整。"""
+    ma = ROOT / "agents" / "modem-log-analyzer"
+    assert ma.exists()
+    assert (ma / "pyproject.toml").exists()
+    assert (ma / "langgraph.json").exists()
+    assert (ma / "Makefile").exists()
+    assert (ma / ".env.example").exists()
+    assert (ma / "AGENTS.md").exists()
+    assert (ma / "Dockerfile").exists()
+
+    # src/modem_log_analyzer 必填骨架
+    src = ma / "src" / "modem_log_analyzer"
+    for fname in (
+        "__init__.py",
+        "contracts.py",
+        "cli.py",
+        "agent.py",
+        "state.py",
+        "subagents.py",
+        "prompts.py",
+        "tools.py",
+        "interrupts.py",
+        "checkpointer.py",
+        "tracing.py",
+        "skills_loader.py",
+        "mcp_servers.py",
+        "llm.py",
+        "env.py",
+        "analysis_service.py",
+    ):
+        assert (src / fname).exists(), f"missing: src/modem_log_analyzer/{fname}"
+
+    # docs
+    for d in ("README.md", "PROMPT.md", "MCP_AND_SKILLS.md", "INTERRUPTS.md"):
+        assert (ma / "docs" / d).exists(), f"missing: docs/{d}"
+
+    # tests
+    for t in (
+        "tests/__init__.py",
+        "tests/conftest.py",
+        "tests/unit/test_contracts.py",
+        "tests/unit/test_tool_registry.py",
+        "tests/unit/test_skills_loader.py",
+        "tests/acceptance/test_cli_contract.py",
+    ):
+        assert (ma / t).exists(), f"missing: {t}"
+
+
+def test_modem_log_analyzer_no_dangerous_tools():
+    """Unit 1: tools.py 不暴露 bash / git_push / 通用 write_file / git_commit。
+
+    注意:docstring / 反向断言字符串(如 ``"def git_push"``)是允许的;
+    只检查真正的函数定义与 ``@tool`` 装饰。
+    """
+    tools = ROOT / "agents/modem-log-analyzer/src/modem_log_analyzer/tools.py"
+    assert tools.exists()
+    txt = tools.read_text()
+    # 真注册会写成 ``def git_push(``(后接参数)或被 ``@tool`` 装饰。
+    import re as _re
+    for forbidden in ("git_push", "bash_tool", "write_file_tool", "git_commit_tool"):
+        # 真实函数定义: ``def <name>(`` 前可有空格, 不可在字符串字面量上下文里。
+        # 用多行扫描:匹配 ``def forbidden(`` 排除字符串上下文。
+        pat = rf"^\s*def\s+{_re.escape(forbidden)}\s*\("
+        for ln, line in enumerate(txt.splitlines(), 1):
+            if _re.search(pat, line):
+                raise AssertionError(
+                    f"tools.py:LINE {ln} 含禁用函数定义 `{line.strip()}`"
+                )
+
+
+def test_modem_log_analyzer_no_global_skill_load():
+    """Unit 1: skills_loader 不得读取 ~/.claude/skills / CLAUDE_CODE_SKILLS_DIR。"""
+    sl = ROOT / "agents/modem-log-analyzer/src/modem_log_analyzer/skills_loader.py"
+    assert sl.exists()
+    txt = sl.read_text()
+    assert "_assert_project_local" in txt, "缺少项目级边界检查"
+    # 反向断言字符串必须存在,且配合禁用关键字使用
+    assert ".claude/skills" in txt or "CLAUDE_CODE_SKILLS_DIR" in txt
+    # 真正的"读 ~/.claude"路径不允许出现
+    assert 'Path.home() / ".claude"' not in txt
+
+
+def test_modem_log_analyzer_console_script_declared():
+    """Unit 1: pyproject.toml 必须声明 console script ``modem-log-analyzer``。"""
+    pyproject = ROOT / "agents/modem-log-analyzer/pyproject.toml"
+    txt = pyproject.read_text()
+    assert "modem-log-analyzer" in txt
+    assert "modem_log_analyzer.cli:cli" in txt
+
+
+def test_modem_log_analyzer_classification_enum_matches_r13():
+    """Unit 1: contracts.Classification 必须严格匹配需求 R13 的 6 个值。"""
+    contracts = ROOT / "agents/modem-log-analyzer/src/modem_log_analyzer/contracts.py"
+    txt = contracts.read_text()
+    expected = {
+        "DEVICE_FAILURE_CONFIRMED",
+        "ENVIRONMENT_FAILURE_INDICATED",
+        "TEST_AUTOMATION_FAILURE_CONFIRMED",
+        "NO_DEVICE_ANOMALY_FOUND",
+        "DEVICE_EVIDENCE_INCOMPLETE",
+        "MULTIPLE_POSSIBLE_CAUSES",
+    }
+    for v in expected:
+        assert f'"{v}"' in txt, f"Classification 缺 {v}"
+
+
+# ============================================================
+# ModemLogAnalyzer Gateway 接入 (Unit 8)
+# ============================================================
+def test_modem_log_analyzer_in_gateway_registry():
+    """gateway registry 必须包含 modem-log-analyzer (Unit 8)。"""
+    txt = (ROOT / "gateway/api/registry.py").read_text(encoding="utf-8")
+    assert '"modem-log-analyzer"' in txt
+    assert "modem_log_analyzer.agent" in txt
+
+
+def test_modem_log_analyzer_router_registered():
+    """routers/__init__.py 必须接入 modem_log_analyzer_router。"""
+    init_text = (ROOT / "gateway/api/routers/__init__.py").read_text()
+    assert "modem_log_analyzer_router" in init_text
+    assert (ROOT / "gateway/api/routers/modem_log_analyzer.py").exists()
+
+
+def test_modem_log_analyzer_report_renderer_exists():
+    """Unit 6: report renderer 必须存在。"""
+    src = ROOT / "agents/modem-log-analyzer/src/modem_log_analyzer/report.py"
+    assert src.exists()
+    txt = src.read_text()
+    # 章节顺序必须锁定
+    for section in [
+        "失败概览",
+        "推断的测试场景与基线",
+        "核心诊断",
+        "根因链",
+        "失败时间线",
+        "测试步骤与日志证据",
+        "故障域判定与推理",
+        "剩余不确定性",
+        "建议行动",
+        "正式证据索引",
+    ]:
+        assert section in txt, f"renderer 缺章节: {section}"
+
+
+def test_modem_log_analyzer_control_log_policy_exists():
+    """Unit 5: control_log_policy 必须存在并含关键函数。"""
+    src = ROOT / "agents/modem-log-analyzer/src/modem_log_analyzer/control_log_policy.py"
+    assert src.exists()
+    txt = src.read_text()
+    for fn in [
+        "should_request_control_log",
+        "has_direct_automation_evidence",
+        "finalize_classification_after_user_choice",
+        "build_resume_payload",
+        "build_interrupt_request",
+    ]:
+        assert fn in txt, f"control_log_policy 缺函数: {fn}"
+
+
+def test_modem_log_analyzer_test_datasets_exist():
+    """Unit 7: 风险驱动测试 + reference_case_52 fixture 必须存在。"""
+    assert (ROOT / "agents/modem-log-analyzer/tests/eval/test_datasets.py").exists()
+    fx = ROOT / "agents/modem-log-analyzer/tests/fixtures/reference_case_52"
+    assert (fx / "evb.log").exists()
+    assert (fx / "control.log").exists()
+    assert (fx / "expected.json").exists()
+    # fixture 数据必须脱敏 (不应有真实电话号码 / 长数字串)
+    evb_text = (fx / "evb.log").read_text()
+    import re as _re
+
+    phone = _re.search(r"\b1[3-9]\d{9}\b", evb_text)
+    assert phone is None, f"reference_case_52/evb.log 含未脱敏的电话: {phone}"
+    long = _re.search(r"\b\d{10,}\b", evb_text.replace("2026-07-19", "").replace("000000000", ""))
+    # 允许日期内的数字串; 拒绝真正长串
+    assert long is None, "reference_case_52/evb.log 含可疑长数字串"

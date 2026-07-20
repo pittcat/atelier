@@ -9,12 +9,12 @@
 Compound Builder 与 code-writer 的差异:输入是 ``plan.md``,不是对话 prompt。
 thread_id 由 Gateway 在外部创建(plan worktree 也由 gateway 持有,R18)。
 """
+
 from __future__ import annotations
 
-import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/agents/compound-builder", tags=["compound-builder"])
 
 
 class PlanRunRequest(BaseModel):
-    plan: dict                               # already-parsed PlanSchema dict
+    plan: dict  # already-parsed PlanSchema dict
     workdir: str = "."
     thread_id: Optional[str] = None
 
@@ -93,9 +93,11 @@ async def get_history(thread_id: str, _: None = Depends(verify_token)):
     cfg = {"configurable": {"thread_id": thread_id}}
     history = []
     for s in agent.get_state_history(cfg):
-        history.append({
-            "created_at": str(s.created_at),
-            "next": s.next,
-            "values": s.values,
-        })
+        history.append(
+            {
+                "created_at": str(s.created_at),
+                "next": s.next,
+                "values": s.values,
+            }
+        )
     return {"thread_id": thread_id, "history": history}

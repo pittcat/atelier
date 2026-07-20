@@ -19,7 +19,8 @@ atelier/
 ├── _templates/agent-template/        # cookiecutter 脚手架：一份命令新建一个 Agent
 ├── agents/                           # 所有 Agent 本体
 │   ├── code-writer/                  # 示范 Agent（真实可跑通）
-│   └── ...
+│   ├── compound-builder/              # 多阶段 TDD 编排 Agent
+│   └── modem-log-analyzer/            # NuttX Modem 失败日志分析 Agent (CLI-first)
 ├── gateway/api/                      # 统一对外 FastAPI 网关
 ├── libs/common/                      # 共享库（LLM 客户端、追踪、auth）
 ├── infrastructure/                   # Docker / K8s / langgraph up
@@ -105,6 +106,67 @@ cd gateway/api && uvicorn main:app --reload --port 8080
 - `_templates/agent-template/docs/PROMPT.md`：每个 Agent 的提示词运维手册
 - `AGENTS.md`：本仓库给 AI Agent 看的宪法
 - `CLAUDE.md`：Claude Code 等会话级规约
+
+## 已交付的 Agent
+
+### code-writer（示范 Agent）
+
+`agents/code-writer/`：规划 → 实现 → 测试 → commit。
+
+```bash
+cd agents/code-writer
+uv sync
+cp .env.example .env
+make dev   # Studio: http://localhost:2024
+```
+
+### compound-builder（多阶段 TDD 编排）
+
+`agents/compound-builder/`：10 节点 StateGraph + 6 维 Send 并行 review + ship gating。
+
+```bash
+cd agents/compound-builder
+uv sync
+make test   # 含 plan-driven TDD
+```
+
+### modem-log-analyzer（NuttX Modem 失败日志分析，CLI-first）
+
+`agents/modem-log-analyzer/`：嵌入式测试工程师的工具，分析单次 EVB 失败日志并产出
+中文 `report.md` + 机器可读 `analysis.json`。
+
+```bash
+# CLI 主入口
+modem-log-analyzer analyze --evb-log evb.log --output out/
+
+# 带控制脚本日志 (升级为 TEST_AUTOMATION_FAILURE_CONFIRMED 的关键)
+modem-log-analyzer analyze \
+  --evb-log evb.log --control-log control.log \
+  --output out/ --label "loop_52"
+
+# Gateway
+curl -X POST "http://localhost:8080/agents/modem-log-analyzer/threads/$TID/artifacts" \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "artifact=@evb.log"
+```
+
+**特点**：
+- 6 个诊断分类严格匹配需求 R13
+- 10 章节 report.md（顺序固定）
+- 只读 + 不暴露危险工具
+- Interrupt/Resume 控制脚本日志按需请求
+- Gateway 完整接入（7 路由 + 鉴权 + 路径穿越防护）
+- 5 个脱敏 e2e fixture + 187 个测试全过
+
+详细文档：
+- `agents/modem-log-analyzer/docs/README.md` — 启动 + 快速开始
+- `agents/modem-log-analyzer/docs/EXAMPLES.md` — 5 个 fixture 输入/输出
+- `agents/modem-log-analyzer/docs/OPERATIONS.md` — 退出码 + 故障排查
+- `agents/modem-log-analyzer/docs/PRIVACY.md` — 三层隐私边界
+- `agents/modem-log-analyzer/docs/COMMAND_CATALOG.md` — 命令知识表
+- `agents/modem-log-analyzer/docs/TESTING.md` — TDD 流程
+- `docs/plans/2026-07-19-001-feat-modem-log-analyzer-cli-plan.md` — 9 个开发 Unit 原始 plan
+- `docs/solutions/integration-issues/modem-log-analyzer-adversarial-review-2026-07-19.md` — 完成性 + 对抗性审查报告
 
 ---
 
