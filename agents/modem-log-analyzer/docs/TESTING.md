@@ -104,6 +104,21 @@ PYTHONPATH=agents/modem-log-analyzer/src:libs/common/src:gateway/api \
 
 合成 `e2e_cases` **不能**替代本组真实样本。
 
+> Plan §5 U6: 本脚本必须真实调用 ``agent_runner.run_agent_analyze`` (CLI 默认主路径);
+> 在无 LLM key 的环境下, 脚本会显式 ``WARN`` + skip, **不**伪造 PASS。
+> 有 key 时 exit 0 且 ``analysis.json`` 通过 schema 校验。
+
+#### 2.7.1 Agent key 隔离矩阵
+
+| 环境 | ``e2e_modem_log_analyzer_real.py`` | ``tests/e2e/test_end_to_end.py`` | ``tests/integration/test_*`` |
+| --- | --- | --- | --- |
+| 有真实 LLM key | 真实 Agent path; exit 0 + 双产物 | 真实 Agent path | monkeypatch runner / 使用 force-rules |
+| 无 key (CI 默认) | 显式 skip + stderr 提示; exit ≠ 0 警告 | ``MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1`` 退回确定性规则 | 同上 |
+| 本地开发 | 推荐用真实 key 跑一次 | 任意 | 任意 |
+
+> 注: 默认 CI 不打真实 LLM; 真实样本 E2E 仅在有 key 时跑,
+>     且必须显式标 ``@pytest.mark.llm`` 或独立脚本。
+
 ## 3. TDD 流程（Plan §5 串行门禁）
 
 每个 Unit 严格走 Red → Green → Refactor 闭环：

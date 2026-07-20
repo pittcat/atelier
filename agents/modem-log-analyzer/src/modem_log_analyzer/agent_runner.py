@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -266,8 +267,9 @@ def run_agent_analyze(
 
         agent = build_agent()
         config: dict[str, Any] = {}
-        if thread_id:
-            config["configurable"] = {"thread_id": thread_id}
+        # Checkpointer 强制要 thread_id (Plan U6 真实样本跑通): 缺省自动生成
+        effective_thread_id = thread_id or f"modem-la-{uuid.uuid4().hex}"
+        config["configurable"] = {"thread_id": effective_thread_id}
 
         try:
             from langchain_core.messages import HumanMessage
