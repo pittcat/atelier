@@ -175,17 +175,18 @@ def test_unknown_rpc_parameters_marked_as_unknown():
 
 
 def test_completely_unknown_rpc_command_kept_as_unknown():
-    """未在 catalog 中出现的命令保留为 unknown,不猜为成功。"""
+    """modemcli> 后跟非可识别命令 → 当作回显/响应, 不得猜为成功业务命令。"""
     from modem_log_analyzer.log_parser import parse_evb_log
 
     raw = "modemcli> some_unknown_command arg1 arg2\n"
     events = parse_evb_log(raw)
     cmds = [ev for ev in events if ev["kind"] == "command"]
-    assert len(cmds) == 1
-    cmd = cmds[0]
-    assert cmd.get("business_action") in (None, "unknown", "uncategorized")
-    # 不得标记为 success
-    assert cmd.get("terminal_outcome") != "success"
+    assert cmds == []
+    # 仍应有 session_entry + callback/response
+    assert any(ev["kind"] == "session_entry" for ev in events)
+    echo = next(ev for ev in events if ev["kind"] in ("callback", "response"))
+    assert echo.get("terminal_outcome") != "success"
+    assert "some_unknown_command" in (echo.get("raw_text") or "")
 
 
 # ============================================================
@@ -246,3 +247,38 @@ def test_evidence_refs_include_source_and_line_no():
         assert ev.line_no is not None
         assert ev.raw_text  # 非空
         assert ev.ref_id.startswith("EV-")
+
+
+def test_parser_handles_real_merge_log_format():
+    """真实 merge.log: ISO 采集时间 + Tab + 板端行; 含 ANSI 与 !ifconfig 无参。"""
+    from modem_log_analyzer.log_parser import parse_evb_log
+
+    raw = (
+        "2026-05-27T13:34:00.931Z\t2026-05-27 [21:34:00.931213] modemcli> \x1b[K!ifconfig\n"
+        "2026-05-27T13:34:12.397Z\t2026-05-27 [21:34:12.397632] modemcli> \x1b[K!ping -c 60 map.baidu.com &\n"
+        "2026-05-27T13:34:12.605Z\t2026-05-27 [21:34:12.605222] modemcli> \x1b[KNo response from 1.1.1.1: icmp_seq=0 time=1000 ms\n"
+        "2026-05-27T13:34:34.331Z\t2026-05-27 [21:34:34.331612] modemcli> \x1b[Kdebug_bes_rpc 4 1 10086 hello\n"
+    )
+    events = parse_evb_log(raw)
+    cmds = [e for e in events if e["kind"] == "command"]
+    names = [c["command_name"] for c in cmds]
+    assert "!ifconfig" in names
+    assert "!ping" in names
+    assert "debug_bes_rpc" in names
+    # ping 回显不得当成命令
+    assert "No" not in names
+    assert all(not (n and n[0].isdigit()) for n in names)
+
+    ping = next(c for c in cmds if c["command_name"] == "!ping")
+    assert ping["capture_ts"] == "2026-05-27T13:34:12.397Z"
+    assert ping["business_action"] == "data_ping"
+
+    sms = next(c for c in cmds if c["command_name"] == "debug_bes_rpc")
+    assert sms["business_action"] == "sms"
+
+    no_resp = next(
+        e
+        for e in events
+        if e.get("kind") == "callback" and "No response from" in (e.get("raw_text") or "")
+    )
+    assert no_resp.get("terminal_outcome") == "failure"

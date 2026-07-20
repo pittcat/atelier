@@ -110,6 +110,13 @@ def analyze(
     if _dotenv_used and not os.getenv("MODEM_LOG_ANALYZER_QUIET"):
         click.echo(f"[cli] loaded env from {_dotenv_used}", err=True)
 
+    if not os.getenv("MODEM_LOG_ANALYZER_QUIET"):
+        from modem_log_analyzer.llm import resolve_default_model
+
+        model = resolve_default_model()
+        base = os.getenv("ANTHROPIC_BASE_URL", "(default anthropic)")
+        click.echo(f"[cli] model={model!r} base_url={base}", err=True)
+
     if dry_run:
         click.echo("[cli] dry-run: skipping LLM, skipping file writes", err=True)
 

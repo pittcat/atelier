@@ -31,11 +31,11 @@ def _make_evb_log(tmp_path: Path, content: str) -> str:
 
 
 def test_call_failure_confirmed(tmp_path):
-    """Call 业务: debug_bes_rpc 1 → ERROR → DEVICE_FAILURE_CONFIRMED。"""
+    """Call 业务: debug_bes_rpc 0 14 → ERROR → DEVICE_FAILURE_CONFIRMED。"""
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
         "[2026-07-19 10:00:05.000][apc1] ERROR: dial failed timeout\n"
     )
@@ -59,7 +59,7 @@ def test_call_incomplete_evidence(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         # 没有后续回调 → 证据不足
     )
     log = _make_evb_log(tmp_path, raw)
@@ -87,7 +87,7 @@ def test_sms_failure_confirmed(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 3 13900000000 hello\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 4 1 13900000000 hello\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
         "[2026-07-19 10:00:05.000][apc1] FAIL: send SMS failed\n"
     )
@@ -168,9 +168,9 @@ def test_mixed_call_with_sms(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
-        "[2026-07-19 10:00:05.000][ap] modemcli> debug_bes_rpc 3 13900000001 hi\n"
+        "[2026-07-19 10:00:05.000][ap] modemcli> debug_bes_rpc 4 1 13900000001 hi\n"
         "[2026-07-19 10:00:06.000][apc1] OK\n"
         "[2026-07-19 10:00:10.000][apc1] FAIL: SMS send failed during call\n"
     )
@@ -200,7 +200,7 @@ def test_evidence_refs_stable_across_runs(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:05.000][apc1] ERROR: dial failed\n"
     )
     log = _make_evb_log(tmp_path, raw)
@@ -219,7 +219,7 @@ def test_diagnosis_only_references_input_evidence_refs(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:05.000][apc1] ERROR: dial failed\n"
     )
     log = _make_evb_log(tmp_path, raw)
@@ -251,7 +251,7 @@ def test_clean_log_no_device_anomaly(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
         "[2026-07-19 10:00:30.000][apc1] OK hangup\n"
     )
@@ -269,7 +269,7 @@ def test_external_result_field_preserved(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
     )
     log = _make_evb_log(tmp_path, raw)

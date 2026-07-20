@@ -44,7 +44,7 @@ def _make_minimal_result(**overrides):
                 "source": "evb.log",
                 "line_no": 1,
                 "timestamp": "2026-07-19 10:00:00.000",
-                "raw_text": "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000",
+                "raw_text": "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000",
                 "module": "ap",
             },
             {
@@ -367,7 +367,7 @@ def test_terminal_summary_does_not_leak_raw_log():
     from modem_log_analyzer.report import render_terminal_summary
 
     result = _make_minimal_result()
-    secret = "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000"
+    secret = "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000"
     assert secret in result["evidence_refs"][0]["raw_text"]
 
     summary = render_terminal_summary(result)

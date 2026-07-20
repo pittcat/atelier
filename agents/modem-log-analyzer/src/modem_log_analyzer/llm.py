@@ -49,5 +49,13 @@ def get_llm(model_name: str) -> Any:
 
 
 def resolve_default_model() -> str:
-    """返回当前默认模型字符串（CLI 启动时打印用）。"""
-    return os.getenv("ATELIER_DEFAULT_MODEL", "claude-opus-4-8")
+    """返回当前默认模型字符串（CLI 启动时打印用）。
+
+    优先级与 compound-builder / code-writer 对齐:
+    ATELIER_DEFAULT_MODEL → ANTHROPIC_MODEL → MiniMax-M3[1M]
+    """
+    return (
+        os.getenv("ATELIER_DEFAULT_MODEL")
+        or os.getenv("ANTHROPIC_MODEL")
+        or "MiniMax-M3[1M]"
+    )

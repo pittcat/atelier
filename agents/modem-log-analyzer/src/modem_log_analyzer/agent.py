@@ -100,7 +100,7 @@ def build_agent() -> Any:
 
     init_tracing(project=os.getenv("LANGSMITH_PROJECT", "atelier-modem-log-analyzer"))
 
-    main_model = get_llm(os.getenv("ATELIER_DEFAULT_MODEL", "claude-opus-4-8"))
+    main_model = get_llm(os.getenv("ATELIER_DEFAULT_MODEL") or os.getenv("ANTHROPIC_MODEL") or "MiniMax-M3[1M]")
     create = _try_import_deepagents()
     SkillsMiddleware = _try_import_skills_middleware()
 

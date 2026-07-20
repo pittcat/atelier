@@ -82,12 +82,27 @@ PYTHONPATH=agents/modem-log-analyzer/src:libs/common/src:gateway/api \
 # 10 passed
 ```
 
-### 2.6 跑独立 e2e 脚本
+### 2.6 跑独立 e2e 脚本（合成 5 cases）
 
 ```bash
 PYTHONPATH=agents/modem-log-analyzer/src:libs/common/src:gateway/api \
   .venv/bin/python scripts/e2e_modem_log_analyzer.py
 ```
+
+### 2.7 真实日志端到端（必跑）
+
+验收「真实可用」时必须用 `tests/fixtures/e2e_real_samples/auto_case_modem_52_loop75/`：
+
+- `merge.log` — 多串口按时间合并的 EVB
+- `control_script.log` — 同次控制脚本
+- `modemcli_commands.md` — ModemCLI 命令参考（项目知识来源）
+
+```bash
+# 仓库根
+.venv/bin/python scripts/e2e_modem_log_analyzer_real.py
+```
+
+合成 `e2e_cases` **不能**替代本组真实样本。
 
 ## 3. TDD 流程（Plan §5 串行门禁）
 

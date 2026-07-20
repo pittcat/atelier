@@ -40,7 +40,7 @@ def test_interrupt_request_triggered_when_no_anomaly(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
     )
     log = _make_evb(tmp_path, raw)
@@ -64,7 +64,7 @@ def test_no_interrupt_when_device_failure_confirmed(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
         "[2026-07-19 10:00:05.000][apc1] ERROR: dial failed\n"
     )
@@ -91,7 +91,7 @@ def test_refuse_control_log_keeps_no_device_anomaly(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
     )
     log = _make_evb(tmp_path, raw)
@@ -119,7 +119,7 @@ def test_direct_evidence_in_control_log_promotes_classification(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
     )
     log = _make_evb(tmp_path, raw)
@@ -148,7 +148,7 @@ def test_control_log_without_direct_evidence_keeps_classification(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
     )
     log = _make_evb(tmp_path, raw)
@@ -177,7 +177,7 @@ def test_thread_isolation_different_results(tmp_path):
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
     )
     log = _make_evb(tmp_path, raw)

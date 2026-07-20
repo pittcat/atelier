@@ -23,6 +23,10 @@ _AUTOMATION_EVIDENCE_PATTERNS = [
     re.compile(r"\bcase_result\s*[:=]\s*FAIL\b", re.IGNORECASE),
     re.compile(r"\btraceback\b", re.IGNORECASE),
     re.compile(r"\bEXCEPTION\b"),
+    # 真实控制脚本 (auto_case_modem_52): ``ERROR ... check ping ... fail``
+    re.compile(r"\bERROR\b.*\bcheck ping\b.*\bfail\b", re.IGNORECASE),
+    re.compile(r"\bERROR\b.*\bfail\b", re.IGNORECASE),
+    re.compile(r"\bcheck ping\b.*\bfail\b", re.IGNORECASE),
 ]
 
 

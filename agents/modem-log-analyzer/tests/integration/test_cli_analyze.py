@@ -32,7 +32,7 @@ def test_cli_analyze_full_path(tmp_path):
     from modem_log_analyzer.cli import cli as cli_cmd
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
         "[2026-07-19 10:00:05.000][apc1] ERROR: dial failed timeout\n"
     )
@@ -79,7 +79,7 @@ def test_cli_analyze_clean_log_triggers_interrupt_metadata(tmp_path):
     from modem_log_analyzer.cli import cli as cli_cmd
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
     )
     log = _write_evb(tmp_path, raw)
@@ -154,7 +154,7 @@ def test_cli_terminal_summary_does_not_leak_phone(tmp_path):
     from modem_log_analyzer.cli import cli as cli_cmd
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
         "[2026-07-19 10:00:05.000][apc1] ERROR: dial failed\n"
     )

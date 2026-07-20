@@ -73,35 +73,97 @@ class ParsedEvent:
 # 行模式 (Plan §1 S6: 双时间戳 + 模块 + 命令)
 # ============================================================
 _BRACKET_RE = re.compile(r"\[([^\]]+)\]")
+# 真实 merge.log: ``<ISO-Z>\t<device line>``（多串口按采集时间合并）
+_ISO_CAPTURE_RE = re.compile(
+    r"^(?P<capture>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s+"
+)
+_DEVICE_DATE_BRACKET_RE = re.compile(
+    r"^(?P<date>\d{4}-\d{2}-\d{2})\s+\[(?P<tod>\d{2}:\d{2}:\d{2}(?:\.\d+)?)\]\s*"
+)
+_KNOWN_MODULES = frozenset({"ap", "apc1", "sensor", "cp", "modem", "ril"})
+
+
+def _split_merge_capture_prefix(line: str) -> tuple[str | None, str]:
+    """拆分 merge.log 行首采集时间; 支持 Tab 或空白分隔。"""
+    if "\t" in line:
+        left, right = line.split("\t", 1)
+        left = left.strip()
+        if _ISO_CAPTURE_RE.match(left + " "):
+            return left, right
+    m = _ISO_CAPTURE_RE.match(line)
+    if m:
+        return m.group("capture"), line[m.end() :]
+    return None, line
 
 
 def _parse_line_timestamps(line: str) -> tuple[str | None, str | None, str | None, str]:
     """从行首抽取时间戳/模块前缀;返回 (device_ts, capture_ts, module, rest)。
 
+    支持两种输入:
+      1. 合成 fixture: ``[device_ts][capture_ts][module] rest``
+      2. 真实 merge.log: ``capture_iso\\tYYYY-MM-DD [HH:MM:SS...] [uptime] [cpu] [module] rest``
+
     容错: 全部可空; rest = 去掉前缀后的行内容(去首尾空格)。
     """
-    parts = _BRACKET_RE.findall(line)
-    rest = _BRACKET_RE.sub("", line, count=len(parts)).strip()
+    capture_from_merge, payload = _split_merge_capture_prefix(line)
+    working = payload if capture_from_merge is not None else line
 
     device_ts: str | None = None
-    capture_ts: str | None = None
+    capture_ts: str | None = capture_from_merge
     module: str | None = None
 
+    # 真实板端前缀: ``2026-05-27 [21:33:58.165511] ...``
+    m_dev = _DEVICE_DATE_BRACKET_RE.match(working)
+    if m_dev:
+        device_ts = f"{m_dev.group('date')} {m_dev.group('tod')}"
+        working = working[m_dev.end() :]
+
+    parts = _BRACKET_RE.findall(working)
+    # 只剥时间戳/模块/数值壳, 保留正文括号内容
+    strip_count = 0
     for p in parts:
-        if "T" in p and ("Z" in p or "+" in p):
+        p_stripped = p.strip()
+        if "T" in p_stripped and ("Z" in p_stripped or "+" in p_stripped):
             if capture_ts is None:
-                capture_ts = p
-        elif "-" in p and ":" in p:
+                capture_ts = p_stripped
+            strip_count += 1
+        elif "-" in p_stripped and ":" in p_stripped:
             if device_ts is None:
-                device_ts = p
-        elif p.isalnum() and len(p) <= 16 and any(c.isalpha() for c in p):
+                device_ts = p_stripped
+            strip_count += 1
+        elif p_stripped.replace(".", "", 1).replace(" ", "").isdigit():
+            # uptime / cpu id 壳: ``[ 8241.761800]`` / ``[ 0]`` / ``[62]``
+            strip_count += 1
+        elif p_stripped.lower() in _KNOWN_MODULES or (
+            p_stripped.isalnum() and len(p_stripped) <= 16 and any(c.isalpha() for c in p_stripped)
+        ):
             if module is None:
-                module = p
+                module = p_stripped.lower() if p_stripped.lower() in _KNOWN_MODULES else p_stripped
+            strip_count += 1
+        else:
+            break
+
+    rest = _BRACKET_RE.sub("", working, count=strip_count).strip() if strip_count else working.strip()
     return device_ts, capture_ts, module, rest
 
 
 _SESSION_PROMPT_RE = re.compile(r"^\s*modemcli[>\s]+(.*)$")
 _BUILTIN_CMD_RE = re.compile(r"^\s*!([a-zA-Z0-9_-]+)(?:\s+(.*))?$")
+_PLAUSIBLE_CMD_RE = re.compile(r"^(?:debug_bes_rpc|![A-Za-z][A-Za-z0-9_-]*)$")
+
+
+def _is_plausible_command_name(cmd_name: str) -> bool:
+    """modemcli> 后跟的必须是已知/可识别命令, 不能把 ping 回显当成命令。"""
+    if not cmd_name:
+        return False
+    if _PLAUSIBLE_CMD_RE.match(cmd_name):
+        return True
+    try:
+        from modem_log_analyzer.command_catalog import get_default_catalog
+
+        return get_default_catalog().get(cmd_name) is not None
+    except Exception:
+        return False
 
 
 def _parse_session_prompt(rest: str) -> tuple[str, list[str]] | None:
@@ -125,11 +187,27 @@ def _parse_builtin(rest: str) -> tuple[str, list[str]] | None:
     return (cmd, args)
 
 
-_RESPONSE_OK_RE = re.compile(r"\bOK\b", re.IGNORECASE)
-_RESPONSE_FAIL_RE = re.compile(r"\b(FAIL|ERROR|EXCEPTION|err)\b", re.IGNORECASE)
+_RESPONSE_OK_RE = re.compile(
+    r"\bOK\b|\bbytes from\b|\bping\s+OK\b|\bifconfig ok\b",
+    re.IGNORECASE,
+)
+_RESPONSE_FAIL_RE = re.compile(
+    r"\b(FAIL|ERROR|EXCEPTION|TIMEOUT)\b|"
+    r"\bNo response from\b|"
+    r"\bassertion\s+failed\b|"
+    r"\bcheck ping\b.*\bfail\b",
+    re.IGNORECASE,
+)
+# 板端噪声 ERROR: 不构成业务失败 (真实 merge.log 常见)
+_NOISE_FAILURE_RE = re.compile(
+    r"RingPlayOnce|no ring file|OFONO_DFX|CPU USAGE",
+    re.IGNORECASE,
+)
 
 
 def _classify_response(text: str) -> str | None:
+    if _NOISE_FAILURE_RE.search(text):
+        return None
     has_ok = bool(_RESPONSE_OK_RE.search(text))
     has_fail = bool(_RESPONSE_FAIL_RE.search(text))
     if has_fail and not has_ok:
@@ -187,11 +265,12 @@ def parse_evb_log(raw: str | bytes) -> list[dict[str, Any]]:
         session_cmd = _parse_session_prompt(rest)
         if session_cmd is not None:
             cmd_name, args = session_cmd
+            # 始终记 modemcli 会话入口 (Plan R3)
             events.append(
                 {
                     "kind": "session_entry",
                     "subkind": "session_entry",
-                    "command_name": cmd_name,
+                    "command_name": "modemcli",
                     "args": [],
                     "rpc": None,
                     "raw_text": line,
@@ -204,19 +283,40 @@ def parse_evb_log(raw: str | bytes) -> list[dict[str, Any]]:
                     "warnings": line_warnings,
                 }
             )
-            if args:
-                events.append(
-                    _build_command_event(
-                        cmd_name,
-                        args,
-                        line,
-                        i,
-                        device_ts,
-                        capture_ts,
-                        module,
-                        line_warnings,
+            # prompt 后若是可识别命令 → 再发 command; 否则当回显/响应
+            if cmd_name and cmd_name != "modemcli":
+                if _is_plausible_command_name(cmd_name):
+                    events.append(
+                        _build_command_event(
+                            cmd_name,
+                            args,
+                            line,
+                            i,
+                            device_ts,
+                            capture_ts,
+                            module,
+                            line_warnings,
+                        )
                     )
-                )
+                else:
+                    outcome = _classify_response(rest)
+                    events.append(
+                        {
+                            "kind": "callback",
+                            "subkind": None,
+                            "command_name": None,
+                            "args": [],
+                            "rpc": None,
+                            "raw_text": line,
+                            "line_no": i,
+                            "device_ts": device_ts,
+                            "capture_ts": capture_ts,
+                            "module": module,
+                            "business_action": None,
+                            "terminal_outcome": outcome,
+                            "warnings": line_warnings,
+                        }
+                    )
             continue
 
         builtin = _parse_builtin(rest)

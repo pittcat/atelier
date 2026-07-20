@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 from modem_log_analyzer.contracts import Classification
@@ -89,7 +90,12 @@ def compute_root_cause_confidence(
 # ============================================================
 # 首异常识别 (R12)
 # ============================================================
-_ANOMALY_KEYWORDS = ("ERROR", "FAIL", "EXCEPTION", "TIMEOUT", "REJECT")
+_ANOMALY_KEYWORDS = ("ERROR", "FAIL", "EXCEPTION", "TIMEOUT", "REJECT", "NO RESPONSE FROM")
+# 真实板端噪声: 含 ERROR 字样但不构成业务失败
+_ANOMALY_NOISE_RE = re.compile(
+    r"RingPlayOnce|no ring file|OFONO_DFX|CPU USAGE",
+    re.IGNORECASE,
+)
 
 
 def _is_anomaly_event(ev: dict) -> bool:
@@ -97,8 +103,13 @@ def _is_anomaly_event(ev: dict) -> bool:
 
     Plan §1 R12: 只有具备命令、状态或时序支持的事件才能进入因果链。
     """
-    text = (ev.get("raw_text") or "").upper()
-    return any(k in text for k in _ANOMALY_KEYWORDS)
+    text = ev.get("raw_text") or ""
+    if _ANOMALY_NOISE_RE.search(text):
+        return False
+    if ev.get("terminal_outcome") == "failure":
+        return True
+    upper = text.upper()
+    return any(k in upper for k in _ANOMALY_KEYWORDS)
 
 
 def find_first_anomaly(

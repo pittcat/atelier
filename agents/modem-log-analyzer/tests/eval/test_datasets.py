@@ -31,7 +31,7 @@ def test_parser_ansi_noise_invariant():
     """对同一文本加任意 ANSI 噪声, 命令识别不应改变。"""
     from modem_log_analyzer.log_parser import parse_evb_log
 
-    raw = "modemcli> debug_bes_rpc 1 13900000000\n"
+    raw = "modemcli> debug_bes_rpc 0 14 13900000000\n"
     # 加 ANSI 控制符
     noisy = "\x1b[31m" + raw.replace("modemcli", "\x1b[1mmodemcli\x1b[0m") + "\x1b[0m"
     events_clean = parse_evb_log(raw)
@@ -48,8 +48,8 @@ def test_parser_extra_blank_lines_invariant():
     """空行插入不影响命令语义。"""
     from modem_log_analyzer.log_parser import parse_evb_log
 
-    raw = "modemcli> debug_bes_rpc 1 13900000000\n[apc1] OK\n"
-    noisy = "\n\n\nmodemcli> debug_bes_rpc 1 13900000000\n\n\n[apc1] OK\n\n\n"
+    raw = "modemcli> debug_bes_rpc 0 14 13900000000\n[apc1] OK\n"
+    noisy = "\n\n\nmodemcli> debug_bes_rpc 0 14 13900000000\n\n\n[apc1] OK\n\n\n"
     events_clean = parse_evb_log(raw)
     events_noisy = parse_evb_log(noisy)
     cmds_clean = [e for e in events_clean if e.get("kind") == "command"]
@@ -62,7 +62,7 @@ def test_parser_random_ansi_invariance():
     """随机 ANSI 序列对命令识别无影响。"""
     from modem_log_analyzer.log_parser import parse_evb_log
 
-    raw = "modemcli> debug_bes_rpc 1 13900000000\n"
+    raw = "modemcli> debug_bes_rpc 0 14 13900000000\n"
     # 模拟日志里夹带的随机 ANSI
     ansi_codes = [
         "\x1b[0m",
@@ -92,7 +92,7 @@ def test_state_machine_command_followed_by_callback():
     from modem_log_analyzer.analysis_service import AnalysisService
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
         "[2026-07-19 10:00:02.000][apc1] ERROR: dial failed\n"
     )

@@ -195,12 +195,12 @@ def test_low_confidence_with_many_gaps():
 
 
 def test_scenario_inference_call():
-    """debug_bes_rpc 1 → call 场景。"""
+    """debug_bes_rpc 0 14 → call 场景。"""
     from modem_log_analyzer.log_parser import parse_evb_log
     from modem_log_analyzer.scenario_inference import infer_scenario
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
     )
     events = parse_evb_log(raw)
@@ -226,8 +226,8 @@ def test_scenario_inference_mixed():
     from modem_log_analyzer.scenario_inference import infer_scenario
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
-        "[2026-07-19 10:00:05.000][ap] modemcli> debug_bes_rpc 3 13900000001 hi\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
+        "[2026-07-19 10:00:05.000][ap] modemcli> debug_bes_rpc 4 1 13900000001 hi\n"
         "[2026-07-19 10:00:10.000][ap] modemcli> !ping 8.8.8.8\n"
     )
     events = parse_evb_log(raw)
@@ -259,7 +259,7 @@ def test_find_first_anomaly_returns_earliest():
     from modem_log_analyzer.log_parser import parse_evb_log
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
         "[2026-07-19 10:00:02.000][apc1] ERROR: timeout\n"
         "[2026-07-19 10:00:03.000][apc1] FAIL\n"
@@ -279,7 +279,7 @@ def test_find_first_anomaly_returns_none_for_clean_log():
     from modem_log_analyzer.log_parser import parse_evb_log
 
     raw = (
-        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 1 13900000000\n"
+        "[2026-07-19 10:00:00.000][ap] modemcli> debug_bes_rpc 0 14 13900000000\n"
         "[2026-07-19 10:00:01.000][apc1] OK\n"
     )
     events = parse_evb_log(raw)

@@ -61,13 +61,25 @@ def test_ifconfig_mapped_to_setting():
 
 
 def test_sms_command_mapped_to_sms():
-    """debug_bes_rpc <sms-sub> 业务动作应为 sms。"""
+    """debug_bes_rpc 4 1 <number> <content> → sms (真实 ModemCLI 文档)。"""
     from modem_log_analyzer.command_catalog import classify_command
 
-    # 在 catalog 中常见的 sms 触发:debug_bes_rpc 3 (sms)
-    # 具体子命令由 catalog 定义;此处只断言动作类属于 sms/call/data_ping/setting/unknown
-    action = classify_command("debug_bes_rpc", ["3", "13900000000", "hello"])
-    assert action in ("sms", "call", "data_ping", "setting", "unknown")
+    assert classify_command("debug_bes_rpc", ["4", "1", "13900000000", "hello"]) == "sms"
+
+
+def test_call_command_mapped_to_call():
+    """debug_bes_rpc 0 14 <number> → call。"""
+    from modem_log_analyzer.command_catalog import classify_command
+
+    assert classify_command("debug_bes_rpc", ["0", "14", "10086"]) == "call"
+
+
+def test_data_rpc_mapped_to_data_ping():
+    """debug_bes_rpc 1 0/1/2 → data 组。"""
+    from modem_log_analyzer.command_catalog import classify_command
+
+    assert classify_command("debug_bes_rpc", ["1", "0"]) == "data_ping"
+    assert classify_command("debug_bes_rpc", ["1", "1"]) == "data_ping"
 
 
 def test_unknown_command_returns_unknown_not_guess():
@@ -87,9 +99,10 @@ def test_catalog_has_required_business_actions():
         ("!ping", ["1.1.1.1"]),
         ("!ping6", ["::1"]),
         ("!ifconfig", []),
-        ("debug_bes_rpc", ["1", "13900000000"]),
-        ("debug_bes_rpc", ["3", "13900000000", "hello"]),
-        ("debug_bes_rpc", ["4", "8.8.8.8"]),
+        ("debug_bes_rpc", ["0", "14", "10086"]),
+        ("debug_bes_rpc", ["1", "0"]),
+        ("debug_bes_rpc", ["4", "1", "13900000000", "hello"]),
+        ("debug_bes_rpc", ["2", "8", "1"]),
     ]
     actions = {classify_command(cmd, args) for cmd, args in sample_inputs}
     # data_ping 和 setting 至少应该被映射

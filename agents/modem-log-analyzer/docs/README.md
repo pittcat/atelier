@@ -161,11 +161,35 @@ CLI **不要求** loop / case 编号；缺标识时使用"单次测试执行"作
 ## 测试
 
 ```bash
-make test                              # 全套（187 passed）
+make test                              # 全套
 TEST=tests/unit/test_contracts.py make test
 TEST=tests/eval/test_datasets.py make test    # 风险驱动 + 标注样例
 PYTHONPATH=agents/modem-log-analyzer/src:libs/common/src:gateway/api \
-  .venv/bin/python -m pytest agents/modem-log-analyzer/tests/e2e/ -v   # 真实 e2e
+  .venv/bin/python -m pytest agents/modem-log-analyzer/tests/e2e/ -v   # 合成 e2e (5 cases)
+```
+
+### 真实日志端到端（必跑）
+
+发布前 / 验收「能不能真的分析」时，**必须**用下面这组真实单次 loop 样本，而不是只跑合成 `e2e_cases`：
+
+| 文件 | 路径 |
+| --- | --- |
+| 多串口合并 EVB | `tests/fixtures/e2e_real_samples/auto_case_modem_52_loop75/merge.log` |
+| 同次控制脚本 | `tests/fixtures/e2e_real_samples/auto_case_modem_52_loop75/control_script.log` |
+| ModemCLI 命令表 | `tests/fixtures/e2e_real_samples/auto_case_modem_52_loop75/modemcli_commands.md` |
+
+```bash
+# 仓库根目录
+.venv/bin/python scripts/e2e_modem_log_analyzer_real.py
+
+# 或手动 CLI
+PYTHONPATH=agents/modem-log-analyzer/src:libs/common/src \
+  .venv/bin/python -m modem_log_analyzer.cli analyze \
+  --evb-log agents/modem-log-analyzer/tests/fixtures/e2e_real_samples/auto_case_modem_52_loop75/merge.log \
+  --control-log agents/modem-log-analyzer/tests/fixtures/e2e_real_samples/auto_case_modem_52_loop75/control_script.log \
+  --output /tmp/modem-la-real-52 \
+  --label auto_case_modem_52_loop75 \
+  --overwrite
 ```
 
 更多测试细节见 [`docs/TESTING.md`](./TESTING.md)。
@@ -174,8 +198,9 @@ PYTHONPATH=agents/modem-log-analyzer/src:libs/common/src:gateway/api \
 
 - 风险驱动测试位于 `tests/eval/test_datasets.py`：parser property-based、业务 state-machine、renderer differential、关键分类 mutation。
 - 标注 fixture：
-  - `tests/fixtures/reference_case_52/` — 通话期间 Ping + 控制侧断言失败（Unit 7 锁定）
-  - `tests/fixtures/e2e_cases/` — 5 个端到端场景（Call/SMS/Data-Ping/Setting/混合）
+  - `tests/fixtures/e2e_real_samples/auto_case_modem_52_loop75/` — **真实** merge + control + ModemCLI 表（端到端主样本）
+  - `tests/fixtures/reference_case_52/` — 脱敏合成对照（Unit 7）
+  - `tests/fixtures/e2e_cases/` — 5 个合成端到端场景（Call/SMS/Data-Ping/Setting/混合）
 - 真实 LangSmith Evaluator 接入（部署前必跑）需 `LANGSMITH_API_KEY`。
 
 ## 部署

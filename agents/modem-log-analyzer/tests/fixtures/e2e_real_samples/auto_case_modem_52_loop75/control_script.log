@@ -1,0 +1,22 @@
+2026-05-27T13:33:46.043Z	2026-05-27 21:33:46,043 env_inf.py [line:115] INFO find_case_name:auto_case_modem_52
+2026-05-27T13:33:46.043Z	2026-05-27 21:33:46,043 case_execute_action.py [line:105] INFO ######### case:auto_case_modem_52 loop:75/100 #########
+2026-05-27T13:33:46.517Z	2026-05-27 21:33:46,518 system_log_interface.py [line:183] INFO device:1 send cmd:debug_bes_rpc 1 0
+2026-05-27T13:33:58.002Z	2026-05-27 21:33:58,002 system_log_interface.py [line:183] INFO device:1 send cmd:debug_bes_rpc 1 0
+2026-05-27T13:33:59.435Z	2026-05-27 21:33:59,435 ims_device_event.py [line:1267] INFO ims device: 1 data state already in: 1
+2026-05-27T13:33:59.435Z	2026-05-27 21:33:59,435 ims_device_event.py [line:1578] INFO ims device: 1 is data on state: 1 ok
+2026-05-27T13:33:59.444Z	2026-05-27 21:33:59,445 system_log_interface.py [line:183] INFO device:1 send cmd:debug_bes_rpc 1 0
+2026-05-27T13:34:00.900Z	2026-05-27 21:34:00,901 system_log_interface.py [line:183] INFO device:1 send cmd:!ifconfig
+2026-05-27T13:34:00.900Z	2026-05-27 21:34:00,901 ims_device_event.py [line:1578] INFO ims device: 1 is data on state: 1 ok
+2026-05-27T13:34:02.340Z	2026-05-27 21:34:02,340 ims_device_event.py [line:1986] INFO ims device: 1 ifconfig ok
+2026-05-27T13:34:07.351Z	2026-05-27 21:34:07,351 tcp_client_action.py [line:75] INFO call server client recv data: {'msg_type': 1, 'response_value': 1, 'resp_msg': {'1': {'sn': 'ff97d801', 'online': 1, 'arrears_state': -255, 'occupied': ['10.75.40.133', 9001], 'occupied_time': 10986538.1080246, 'sim': {'enable': 1, 'number': '17748682117', 'provider': 1, 'call_state': 0, 'operator': '10000', 'start_time': -255}, 'wechat': {'enable': 0, 'call_state': 0, 'name': 'bes_test', 'start_time': -255}}}}
+2026-05-27T13:34:12.377Z	2026-05-27 21:34:12,377 system_log_interface.py [line:183] INFO device:1 send cmd:!ping -c 60 map.baidu.com &
+2026-05-27T13:34:13.821Z	2026-05-27 21:34:13,821 ims_device_event.py [line:1678] INFO ims device: 1 ping begin
+2026-05-27T13:34:34.231Z	2026-05-27 21:34:34,231 ims_device_state_check_inf.py [line:4148] INFO ims device: 1 not receive modem_sleep_normal_paging
+2026-05-27T13:34:34.290Z	2026-05-27 21:34:34,291 system_log_interface.py [line:183] INFO device:1 send cmd:debug_bes_rpc 4 1 17748682117 hello_2026_05_27_21_34_02
+2026-05-27T13:34:50.769Z	2026-05-27 21:34:50,770 tcp_client_inf.py [line:228] INFO tcp acquire message
+2026-05-27T13:34:55.780Z	2026-05-27 21:34:55,781 ims_device_state_check_inf.py [line:488] INFO ims device: (1, 1) check call work state: pre state: 0 next state: 7
+2026-05-27T13:34:55.780Z	2026-05-27 21:34:55,781 tcp_client_inf.py [line:232] INFO tcp acquire message ok
+2026-05-27T13:34:55.780Z	2026-05-27 21:34:55,780 tcp_client_action.py [line:75] INFO call server client recv data: {'msg_type': 1, 'response_value': 1, 'resp_msg': 'hello_2026_05_27_21_34_02'}
+2026-05-27T13:34:55.841Z	2026-05-27 21:34:55,841 ims_device_event.py [line:1705] INFO ims device: 1 send number: 17748682117 sms content: hello_2026_05_27_21_34_02 ok
+2026-05-27T13:35:13.963Z	2026-05-27 21:35:13,963 tcp_client_inf.py [line:159] INFO tcp call release source 
+2026-05-27T13:35:13.963Z	2026-05-27 21:35:13,963 ims_device_event.py [line:1707] ERROR ims device: 1 check ping addr: map.baidu.com state: 1 fail
