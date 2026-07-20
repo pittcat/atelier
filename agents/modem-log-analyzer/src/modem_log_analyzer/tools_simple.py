@@ -47,25 +47,22 @@ def _as_simple_tool(name: str, fn: Callable[..., Any], description: str = "") ->
 
 
 def try_langchain_tool(name: str, fn: Callable[..., Any], description: str = "") -> Any:
-    """如果 langchain_core 可用,返回 ``@tool`` 装饰对象;否则返回 SimpleTool。
+    """如果 langchain_core 可用,返回 langchain ``StructuredTool``;否则返回 SimpleTool。
 
     仅供 Agent 装配路径使用;静态测试不依赖此函数。
     """
     try:
-        from langchain_core.tools import tool  # type: ignore
-
-        @tool
-        def _t(**kwargs: Any) -> Any:  # type: ignore[no-redef]
-            """See parent docstring."""
-            return fn(**kwargs)
-
-        # 覆盖函数名与 docstring
-        _t.name = name
-        if description:
-            _t.description = description
-        return _t
+        from langchain_core.tools import StructuredTool  # type: ignore
     except ImportError:
         return SimpleTool(name=name, description=description, fn=fn)
+
+    # 用 StructuredTool.from_function 让 .invoke({"k": v}) 正确解包 kwargs。
+    tool = StructuredTool.from_function(
+        func=fn,
+        name=name,
+        description=description,
+    )
+    return tool
 
 
 __all__ = ["SimpleTool", "_as_simple_tool", "try_langchain_tool"]

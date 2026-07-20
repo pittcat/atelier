@@ -171,22 +171,35 @@ def build_tools() -> list:
     """主代理可用工具合集。
 
     返回 ``list[BaseTool]``(deepagents / langgraph 能直接消费)。
-    在没有安装 langchain_core 的测试环境,我们返回轻量 SimpleTool 替身,
-    它们通过 ``.name`` / ``.invoke({...})`` 接口可被静态测试校验。
+    优先返回 langchain 工具 (``@tool`` 装饰对象); 在没有安装 langchain_core
+    的测试环境, 退化为轻量 ``SimpleTool`` 替身, 它们通过 ``.name`` /
+    ``.invoke({...})`` 接口可被静态测试校验。
     """
-    from modem_log_analyzer.tools_simple import (
-        _as_simple_tool,
-    )
+    from modem_log_analyzer.tools_simple import try_langchain_tool
 
     _assert_no_push()
 
-    # 注意:这里 import 是惰性的,以避免在没有 langchain_core 的环境失败。
-    # 测试只校验工具的 ``.name`` 属性与总数, 不真正调用。
     return [
-        _as_simple_tool("get_preprocessed_bundle", get_preprocessed_bundle_tool),
-        _as_simple_tool("read_evb_log_slice", read_evb_log_slice_tool),
-        _as_simple_tool("read_control_log", read_control_log_tool),
-        _as_simple_tool("validate_analysis_draft", validate_analysis_draft_tool),
+        try_langchain_tool(
+            "get_preprocessed_bundle",
+            get_preprocessed_bundle_tool,
+            description="Return the current run preprocess bundle (run_label, command_summary, evidence_refs EV-NNNN, control_summary, interrupt_request). Requires runner.run_context to be set.",
+        ),
+        try_langchain_tool(
+            "read_evb_log_slice",
+            read_evb_log_slice_tool,
+            description="Read a line window [start_line, end_line] (1-based, inclusive) from the current run EVB log. max_lines caps the window; truncated output is annotated.",
+        ),
+        try_langchain_tool(
+            "read_control_log",
+            read_control_log_tool,
+            description="Read a control-script log file (only available when CLI was invoked with --control-log).",
+        ),
+        try_langchain_tool(
+            "validate_analysis_draft",
+            validate_analysis_draft_tool,
+            description="Validate a candidate AnalysisResult dict against the public schema; returns 'VALID classification=...' or 'INVALID: ...'.",
+        ),
     ]
 
 

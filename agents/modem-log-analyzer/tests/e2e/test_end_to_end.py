@@ -58,6 +58,8 @@ def _run_cli(fx: Path, out_dir: Path) -> tuple[int, dict | None]:
     env = os.environ.copy()
     env["PYTHONPATH"] = PYTHONPATH
     env["MODEM_LOG_ANALYZER_QUIET"] = "true"
+    # Plan U5: 合成 e2e 用例依赖确定性规则管线, 不调真实 LLM
+    env["MODEM_LOG_ANALYZER_CLI_FORCE_RULES"] = "1"
     proc = subprocess.run(args, capture_output=True, text=True, cwd=str(REPO), env=env)
     if proc.returncode != 0:
         return proc.returncode, None
@@ -106,11 +108,19 @@ def test_gateway_end_to_end(fx_name: str):
     expected = _expected(fx)
 
     # 重置 PYTHONPATH + 暂存目录
-    os.environ["MODEM_LOG_ANALYZER_STAGING_DIR"] = f"/tmp/e2e-pytest-{fx_name}"
+    import shutil
+
+    staging = f"/tmp/e2e-pytest-{fx_name}"
+    if os.path.isdir(staging):
+        shutil.rmtree(staging, ignore_errors=True)
+    os.environ["MODEM_LOG_ANALYZER_STAGING_DIR"] = staging
+    # Plan U5: gateway 合成 e2e 用确定性规则管线, 不调真实 LLM
+    os.environ["MODEM_LOG_ANALYZER_CLI_FORCE_RULES"] = "1"
 
     sys.path.insert(0, str(REPO))
     sys.path.insert(0, str(REPO / "agents/modem-log-analyzer/src"))
     sys.path.insert(0, str(REPO / "libs/common/src"))
+    sys.path.insert(0, str(REPO / "gateway/api"))
 
     import importlib
 

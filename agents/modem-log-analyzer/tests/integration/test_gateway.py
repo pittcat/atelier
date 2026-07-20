@@ -116,8 +116,12 @@ def test_auth_required_when_token_set():
 def test_gateway_full_path_upload_invoke_resume_report():
     """完整 Gateway 路径: upload → invoke → resume → GET /report → DELETE。"""
     import os
+    import shutil
 
-    os.environ["MODEM_LOG_ANALYZER_STAGING_DIR"] = "/tmp/modem-la-gateway-test"
+    staging = "/tmp/modem-la-gateway-test"
+    if os.path.isdir(staging):
+        shutil.rmtree(staging, ignore_errors=True)
+    os.environ["MODEM_LOG_ANALYZER_STAGING_DIR"] = staging
 
     # 必须先 import, 然后 reload (env 变化后才生效)
     import gateway.api.main as gateway_main

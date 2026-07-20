@@ -1,23 +1,23 @@
-"""ModemLogAnalyzer —— AnalysisService (Unit 4 端到端)。
+"""ModemLogAnalyzer —— AnalysisService (legacy rule pipeline, U5 降级)。
 
-按 Plan Unit 4:
-  - 入口: ``run_analyze(evb_log_path, output_dir, ...)`` 返回 AnalysisResult dict。
-  - 流程:
-      1. intake 验证(由 CLI 调用方负责, 这里假设已通过)
-      2. log_parser.parse_evb_log → 事件列表
-      3. evidence.build_evidence_index → refs
-      4. scenario_inference.infer_scenario → 推断场景
-      5. classification.find_first_anomaly → 首异常
-      6. classification.decide_classification → 顶层分类
-      7. 构造 AnalysisResult dict (符合 contracts.AnalysisResult schema)
-  - 接口契约: dict[str, Any], 字段名稳定, 便于 Unit 6 渲染。
+按 Plan §5 U5:
+  - 本类保留作为**离线单测 / 替身**入口, **不得再被 CLI/Gateway 主路径调用**。
+  - CLI/Gateway 主路径必须走 ``agent_runner.run_agent_analyze``
+    (确定性预处理 + Deep Agent 诊断 + schema 校验)。
+  - 旧测试可以继续 monkeypatch ``AnalysisService.run_analyze`` 以保留兼容,
+    但默认实现已委托到 agent_runner; 真实生产路径不再走纯规则。
+  - 若显式需要纯规则管线 (例如离线单测对比), 应使用 ``MODEM_LOG_ANALYZER_RULES_BACKEND=1``。
 """
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from modem_log_analyzer.classification import (
     compute_root_cause_confidence,
@@ -39,10 +39,16 @@ from modem_log_analyzer.scenario_inference import infer_scenario
 
 
 class AnalysisService:
-    """Unit 4 真实分析服务。
+    """AnalysisService —— 离线规则管线 (Plan §5 U5 降级)。
 
-    Unit 1 占位实现已被替换为完整管线。
-    后续 Unit 5/6 在此基础上接入 interrupt/resume 与产物落盘。
+    设计:
+      - 默认行为: ``run_analyze`` 走**纯规则管线** ``_run_rules_pipeline``。
+        这保留了 U4 时期 (本计划之前) 的旧单测与离线对比。
+      - CLI / Gateway 主路径**不**调用本类; 它们改走 ``agent_runner.run_agent_analyze``。
+      - 不要把 ``AnalysisService.run_analyze`` 当作主路径 Agent 诊断 —— 这是 U5
+        明确禁止的"冒充"。CLI 主入口 (``cli._default_runner``) 已切到 agent_runner。
+      - 若希望 CLI 也强制走规则管线 (例如离线调试), 可设
+        ``MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1``, ``cli`` 会改用本类实现。
     """
 
     def run_analyze(
@@ -56,11 +62,37 @@ class AnalysisService:
         overwrite: bool = False,
         dry_run: bool = False,
     ) -> dict[str, Any]:
+        return self._run_rules_pipeline(
+            evb_log_path=evb_log_path,
+            output_dir=output_dir,
+            control_log_path=control_log_path,
+            label=label,
+            thread_id=thread_id,
+            overwrite=overwrite,
+            dry_run=dry_run,
+        )
+
+    # ============================================================
+    # 规则管线 (Plan §5 U4 + U5 降级命名 backend=rules_pipeline_legacy)
+    # ============================================================
+    def _run_rules_pipeline(
+        self,
+        *,
+        evb_log_path: str,
+        output_dir: str,
+        control_log_path: str | None,
+        label: str | None,
+        thread_id: str | None,
+        overwrite: bool,
+        dry_run: bool,
+    ) -> dict[str, Any]:
         # 1. 读取 EVB 日志
         path = Path(evb_log_path)
         raw_text = path.read_text(encoding="utf-8", errors="replace")
 
         # 2. 解析
+        from modem_log_analyzer.log_parser import parse_evb_log
+
         events = parse_evb_log(raw_text)
 
         # 2.5 控制日志(若提供且文件存在)
@@ -72,10 +104,8 @@ class AnalysisService:
                     ctext = cpath.read_text(encoding="utf-8", errors="replace")
                     control_events = parse_control_log(ctext)
                 except Exception:
-                    # 读取失败不应让 analyze 整体失败; 视为无 control_log
                     control_events = []
             else:
-                # 文件不存在或不可读: 不报错, has_control_log 保持 False
                 control_log_path = None
                 has_control_log = False
 
@@ -92,14 +122,11 @@ class AnalysisService:
 
         # 6. 顶层分类决策
         has_device_anomaly = first_anomaly is not None
-        has_environment_evidence = False  # Unit 4 阶段尚未区分环境指征
-        # 用户是否提供了控制日志路径(用于 interrupt 决策)
+        has_environment_evidence = False
         has_control_log = control_log_path is not None
-        # has_control_log_evidence: 必须有直接证据(Plan R16); 仅"路径存在"不够
         has_direct_evidence = bool(control_events) and has_direct_automation_evidence(
             control_events
         )
-        # 完整: 有 first_anomaly + 至少一个 callback/response, 或干净日志至少 1 个 evidence
         has_followup = any(ev.get("kind") in ("callback", "response") for ev in events)
         is_complete = (first_anomaly is not None and has_followup) or (
             first_anomaly is None and len(evidence_refs) >= 1
@@ -111,8 +138,6 @@ class AnalysisService:
             is_complete=is_complete,
         )
 
-        # 6.5 Unit 5: 控制日志 evidence 已用于上一步, 不再二次升级。
-
         # 7. 置信度
         n_supporting = len(evidence_refs) if first_anomaly else 0
         n_gaps = 0 if first_anomaly else max(0, 3 - len(evidence_refs))
@@ -123,7 +148,6 @@ class AnalysisService:
         )
 
         # 8. 时间线 + 根因链 + 控制侧关键证据
-        # 先缩短首异常摘要, 再入根因链 (避免链里塞整行双时间戳)
         if first_anomaly and first_anomaly.get("summary"):
             first_anomaly = {
                 **first_anomaly,
@@ -142,7 +166,6 @@ class AnalysisService:
         # 9. notes + suggested_actions
         notes: list[str] = []
         suggested: list[str] = []
-        # Unit 5: 检测是否需要 interrupt 请求控制日志
         interrupt_request = None
         if should_request_control_log(
             first_anomaly=first_anomaly,
@@ -168,7 +191,7 @@ class AnalysisService:
                 "板端与控制脚本均有失败信号; 请对照「控制脚本要点」与板端首异常判断主责。"
             )
 
-        result: dict[str, Any] = {
+        return {
             "schema_version": ANALYSIS_SCHEMA_VERSION,
             "run_label": label or "单次测试执行",
             "classification": classification_enum.value,
@@ -204,9 +227,9 @@ class AnalysisService:
                 "interrupt_request": interrupt_request,
                 "control_log_events": len(control_events),
                 "timeline_total_before_filter": len(events),
+                "backend": "rules_pipeline_legacy",
             },
         }
-        return result
 
 
 _NOISE_RAW_RE = re.compile(

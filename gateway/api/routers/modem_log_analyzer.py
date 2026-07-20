@@ -1,10 +1,13 @@
 """ModemLogAnalyzer —— Gateway 路由。
 
-按 Plan §5 Unit 8:
+按 Plan §5 Unit 8 + U4:
   - 模仿 code-writer / compound-builder router 模式。
   - 客户端禁止提交任意服务器绝对路径: 通过 multipart 上传或 thread-scoped
     artifact-id, 文件限定在服务端为该 thread 创建的隔离暂存区。
   - 响应遵守 AnalysisResult schema; 不返回原始日志全文。
+  - Plan U4 主路径: 与 CLI 共用同一个 Agent runner (``agent_runner.run_agent_analyze``)。
+    ``MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1`` 时退回 ``AnalysisService._run_rules_pipeline``
+    (供离线 / 合成 e2e 使用, **不**用于生产 Agent 诊断)。
 """
 
 from __future__ import annotations
@@ -22,8 +25,25 @@ from pydantic import BaseModel, Field
 
 from auth import verify_token
 
+from modem_log_analyzer.report import atomic_write_artifacts
+
 
 router = APIRouter(prefix="/agents/modem-log-analyzer", tags=["modem-log-analyzer"])
+
+
+def _dispatch_runner(**kwargs):
+    """Plan U4: 选 runner。
+
+    - ``MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1`` → 确定性规则管线 (合成 e2e / 离线)
+    - 默认: ``agent_runner.run_agent_analyze`` (AI Agent 诊断)
+    """
+    if os.getenv("MODEM_LOG_ANALYZER_CLI_FORCE_RULES") == "1":
+        from modem_log_analyzer.analysis_service import AnalysisService
+
+        return AnalysisService()._run_rules_pipeline(**kwargs)
+    from modem_log_analyzer.agent_runner import run_agent_analyze
+
+    return run_agent_analyze(**kwargs)
 
 
 # ============================================================
@@ -212,11 +232,8 @@ def invoke_run(
             raise HTTPException(404, "control artifact not found")
         control_path = str(cp)
 
-    # 调用 AnalysisService
-    from modem_log_analyzer.analysis_service import AnalysisService
-
-    svc = AnalysisService()
-    result = svc.run_analyze(
+    # Plan U4: 共用 CLI 的 runner
+    result = _dispatch_runner(
         evb_log_path=str(evb_artifact),
         output_dir=str(output_dir),
         control_log_path=control_path,
@@ -228,8 +245,6 @@ def invoke_run(
 
     # 写产物 (原子提交)
     try:
-        from modem_log_analyzer.report import atomic_write_artifacts
-
         atomic_write_artifacts(
             result=result,
             output_dir=str(output_dir),
@@ -277,14 +292,12 @@ def resume_run(
             raise HTTPException(404, "control artifact not found")
         control_path = str(cp)
 
-    from modem_log_analyzer.analysis_service import AnalysisService
-    from modem_log_analyzer.report import atomic_write_artifacts
-
-    svc = AnalysisService()
-    result = svc.run_analyze(
+    # Plan U4: 共用 CLI 的 runner
+    result = _dispatch_runner(
         evb_log_path=str(evb_artifact),
         output_dir=str(output_dir),
         control_log_path=control_path,
+        label=None,
         thread_id=thread_id,
         overwrite=True,
         dry_run=False,

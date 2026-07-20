@@ -4,20 +4,18 @@
     modem-log-analyzer analyze --evb-log <file> --output <dir> [选项]
     modem-log-analyzer --help
 
-设计目标 (Plan §1, Unit 1):
+设计目标 (Plan §1, U3):
   - CLI 是首要交付入口。
+  - ``analyze`` 默认走 **AI Agent** (``agent_runner.run_agent_analyze``)。
+    确定性预处理 + Deep Agent 诊断 + schema 校验 + 确定性 renderer。
+  - 旧 ``AnalysisService.run_analyze`` 降级为:
+      1. dry-run 替身 (--dry-run 由 agent_runner 内部处理, 仍走 preprocess);
+      2. 离线单测替身 (tests/integration 用 env ``MODEM_LOG_ANALYZER_RULES_BACKEND=1`` 启用);
+      3. 严禁冒充主路径的 Agent 分析 (Plan S5)。
   - 必须从模块 import 之前完成 dotenv 加载与中间件 patch
     (避免 ``docs/solutions/integration-issues/code-writer-cli-502-compound-misconfig.md``
     记录的入口差异问题)。
   - ``analyze`` 不要求 loop 编号;control-log / label / thread / overwrite 全可选。
-  - Unit 1 阶段: ``analyze`` 仅做"输入校验 + 占位服务调用",输出明确的
-    "尚未实现"退出码(2)。Unit 2+ 逐步接入 AnalysisService 与产物生成。
-
-CLI dotenv 加载顺序:
-  1. ``$ATELIER_HOME/.env``
-  2. ``~/.atelier/modem-log-analyzer/.env``
-  3. ``agents/modem-log-analyzer/.env`` (源码模式)
-  4. 仓库根 ``.env`` (已安装倒推)
 """
 
 from __future__ import annotations
@@ -46,6 +44,52 @@ except Exception:  # pragma: no cover
 
 
 # ============================================================
+# 默认 runner: AI Agent (Plan U3 主路径)
+# ============================================================
+def _default_runner(
+    *,
+    evb_log_path: str,
+    output_dir: str,
+    control_log_path: str | None,
+    label: str | None,
+    thread_id: str | None,
+    overwrite: bool,
+    dry_run: bool,
+) -> dict:
+    """CLI 默认的诊断入口。
+
+    Plan U3 主路径: AI Agent (``agent_runner.run_agent_analyze``)。
+    Plan U5 降级: 在 ``MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1`` 时退回
+    ``AnalysisService._run_rules_pipeline`` (用于离线单测、合成 e2e 等
+    不依赖真实 LLM 的场景)。生产部署**不得**显式打开此开关。
+    """
+    if os.getenv("MODEM_LOG_ANALYZER_CLI_FORCE_RULES") == "1":
+        from modem_log_analyzer.analysis_service import AnalysisService
+
+        return AnalysisService()._run_rules_pipeline(
+            evb_log_path=evb_log_path,
+            output_dir=output_dir,
+            control_log_path=control_log_path,
+            label=label,
+            thread_id=thread_id,
+            overwrite=overwrite,
+            dry_run=dry_run,
+        )
+
+    from modem_log_analyzer.agent_runner import run_agent_analyze
+
+    return run_agent_analyze(
+        evb_log_path=evb_log_path,
+        output_dir=output_dir,
+        control_log_path=control_log_path,
+        label=label,
+        thread_id=thread_id,
+        overwrite=overwrite,
+        dry_run=dry_run,
+    )
+
+
+# ============================================================
 # CLI 入口
 # ============================================================
 @click.group()
@@ -57,7 +101,7 @@ except Exception:  # pragma: no cover
 def cli(quiet: bool) -> None:
     """Atelier ModemLogAnalyzer CLI.
 
-    主入口: analyze
+    主入口: analyze (默认走 AI Agent)
     """
     if quiet:
         os.environ["MODEM_LOG_ANALYZER_QUIET"] = "true"
@@ -95,7 +139,7 @@ def cli(quiet: bool) -> None:
 @click.option(
     "--dry-run",
     is_flag=True,
-    help="仅做输入校验,不调用 LLM / 不写文件",
+    help="仅做输入校验与预处理,不调用 LLM / 不写文件",
 )
 def analyze(
     evb_log: str,
@@ -106,7 +150,11 @@ def analyze(
     overwrite: bool,
     dry_run: bool,
 ) -> None:
-    """Analyze a single NuttX EVB failure log and emit report.md + analysis.json."""
+    """Analyze a single NuttX EVB failure log via AI Agent.
+
+    主路径: 确定性预处理 → Deep Agent 诊断 → schema 校验 → 确定性 renderer。
+    ``--dry-run`` 跳过 LLM 调用与产物落盘, 仅返回预处理摘要。
+    """
     if _dotenv_used and not os.getenv("MODEM_LOG_ANALYZER_QUIET"):
         click.echo(f"[cli] loaded env from {_dotenv_used}", err=True)
 
@@ -120,8 +168,7 @@ def analyze(
     if dry_run:
         click.echo("[cli] dry-run: skipping LLM, skipping file writes", err=True)
 
-    # ---- Unit 2: 输入校验 (intake) ----
-    # intake 在调用 service / Agent 之前拒绝所有非法输入。
+    # ---- intake (Agent 之前) ----
     from modem_log_analyzer.intake import (
         IntakeError,
         build_proxy_from_cli_kwargs,
@@ -143,16 +190,14 @@ def analyze(
         click.echo(f"ERROR [{e.code}]: {e.message}", err=True)
         raise SystemExit(2) from e
 
-    # ---- 委托给 AnalysisService ----
-    from modem_log_analyzer.analysis_service import AnalysisService
+    # ---- 委托给 AI Agent runner ----
     from modem_log_analyzer.report import (
         atomic_write_artifacts,
         render_terminal_summary,
     )
 
-    service = AnalysisService()
     try:
-        result = service.run_analyze(
+        result = _default_runner(
             evb_log_path=validated.evb_log_path,
             output_dir=validated.output_dir,
             control_log_path=validated.control_log_path,
@@ -164,8 +209,11 @@ def analyze(
     except (ValueError, FileNotFoundError, FileExistsError, NotImplementedError) as e:
         click.echo(f"ERROR: {e}", err=True)
         raise SystemExit(2) from e
+    except RuntimeError as e:
+        click.echo(f"ERROR [AGENT_INVOKE]: {e}", err=True)
+        raise SystemExit(2) from e
 
-    # ---- Unit 6: 写产物 (除非 dry_run) ----
+    # ---- 写产物 (除非 dry_run) ----
     if not dry_run:
         try:
             atomic_write_artifacts(
@@ -189,6 +237,9 @@ def analyze(
     click.echo(render_terminal_summary(result))
     click.echo("---")
     click.echo(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+__all__ = ["cli", "_default_runner"]
 
 
 if __name__ == "__main__":

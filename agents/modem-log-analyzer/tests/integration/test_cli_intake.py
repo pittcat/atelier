@@ -1,9 +1,9 @@
-"""Unit 2 集成测试: CLI 非法输入在调用服务前失败, 合法请求正常委托。
+"""Unit 2 集成测试: CLI 非法输入在调用 runner 前失败, 合法请求正常委托。
 
-约束 (Plan §3, Unit 2):
-  - 测试使用 Fake AnalysisService, 记录被调用的次数与参数。
-  - 非法输入必须使 CLI 返回非零退出码, stderr 含可操作错误, 但 Fake service 不被调用。
-  - 合法输入 Fake service 被恰好调用一次。
+约束 (Plan §3, Unit 2 + U3):
+  - 测试使用 Fake ``_default_runner``, 记录被调用的次数与参数。
+  - 非法输入必须使 CLI 返回非零退出码, stderr 含可操作错误, Fake 不被调用。
+  - 合法输入 Fake runner 被恰好调用一次。
   - 本测试同进程运行 Click CLI (CliRunner.invoke), 这样 monkeypatch 可以生效。
 """
 
@@ -21,36 +21,40 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 
-class _FakeServiceState:
+class _FakeRunnerState:
     calls: list[dict] = []
 
 
-def _install_fake_service(monkeypatch: pytest.MonkeyPatch):
-    """把 AnalysisService 替换成计数 Fake。
+def _install_fake_runner(monkeypatch: pytest.MonkeyPatch):
+    """把 ``cli._default_runner`` 替换成计数 Fake。
 
-    同时 patch cli 模块的 namespace, 让 lazy import 找到 Fake。
+    Plan U3 主路径默认走 _default_runner (= agent_runner.run_agent_analyze)。
     """
-    from modem_log_analyzer import analysis_service
     from modem_log_analyzer import cli as cli_mod
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    class FakeAnalysisService:
-        def run_analyze(self, **kwargs):
-            _FakeServiceState.calls.append(kwargs)
-            return {
-                "schema_version": "0.1.0",
-                "stage": "fake_called",
-                "calls": len(_FakeServiceState.calls),
-            }
+    def _fake_runner(**kwargs):
+        _FakeRunnerState.calls.append(kwargs)
+        return {
+            "schema_version": "0.1.0",
+            "run_label": kwargs.get("label") or "x",
+            "classification": "DEVICE_FAILURE_CONFIRMED",
+            "root_cause_confidence": "low",
+            "evidence_refs": [],
+            "timeline": [],
+            "root_cause_chain": [],
+            "control_log_used": False,
+            "external_result": "FAIL",
+            "notes": [],
+            "suggested_actions": [],
+            "first_anomaly": None,
+            "_meta": {"dry_run": kwargs.get("dry_run", False)},
+        }
 
-    _FakeServiceState.calls = []
-    monkeypatch.setattr(analysis_service, "AnalysisService", FakeAnalysisService)
-    # cli.py 在内部 ``from modem_log_analyzer.analysis_service import AnalysisService``,
-    # 因此覆盖 analysis_service 模块即可。
-
-    # 但 intake 是已经被 import 的, 不需要重 patch
-    _ = cli_cmd, cli_mod
-    return FakeAnalysisService
+    _FakeRunnerState.calls = []
+    monkeypatch.setattr(cli_mod, "_default_runner", _fake_runner)
+    _ = cli_cmd
+    return _fake_runner
 
 
 @pytest.fixture
@@ -75,7 +79,7 @@ def _invoke_cli(runner: CliRunner, *args: str):
 def test_legal_minimal_invokes_service(monkeypatch, workspace):
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     runner = CliRunner()
     result = runner.invoke(
         cli_cmd,
@@ -83,8 +87,8 @@ def test_legal_minimal_invokes_service(monkeypatch, workspace):
         catch_exceptions=False,
     )
     assert result.exit_code == 0, f"stderr={result.stderr} stdout={result.stdout}"
-    assert len(_FakeServiceState.calls) == 1
-    call = _FakeServiceState.calls[0]
+    assert len(_FakeRunnerState.calls) == 1
+    call = _FakeRunnerState.calls[0]
     assert call["evb_log_path"] == workspace["evb"]
     assert call["output_dir"] == workspace["out"]
 
@@ -92,7 +96,7 @@ def test_legal_minimal_invokes_service(monkeypatch, workspace):
 def test_legal_with_overwrite_invokes_service(monkeypatch, workspace):
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     runner = CliRunner()
     result = runner.invoke(
         cli_cmd,
@@ -107,14 +111,14 @@ def test_legal_with_overwrite_invokes_service(monkeypatch, workspace):
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert len(_FakeServiceState.calls) == 1
-    assert _FakeServiceState.calls[0]["overwrite"] is True
+    assert len(_FakeRunnerState.calls) == 1
+    assert _FakeRunnerState.calls[0]["overwrite"] is True
 
 
 def test_legal_with_label_invokes_service(monkeypatch, workspace):
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     runner = CliRunner()
     result = runner.invoke(
         cli_cmd,
@@ -130,7 +134,7 @@ def test_legal_with_label_invokes_service(monkeypatch, workspace):
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert _FakeServiceState.calls[0]["label"] == "loop_52"
+    assert _FakeRunnerState.calls[0]["label"] == "loop_52"
 
 
 # ============================================================
@@ -141,7 +145,7 @@ def test_legal_with_label_invokes_service(monkeypatch, workspace):
 def test_missing_evb_log_fails_without_service(monkeypatch, workspace):
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     missing = str(workspace["tmp"] / "does_not_exist.log")
     runner = CliRunner()
     result = runner.invoke(
@@ -155,13 +159,13 @@ def test_missing_evb_log_fails_without_service(monkeypatch, workspace):
         or "not found" in result.stderr.lower()
         or "exists" in result.stderr.lower()
     )
-    assert _FakeServiceState.calls == [], "service must not be called for missing evb-log"
+    assert _FakeRunnerState.calls == [], "runner must not be called for missing evb-log"
 
 
 def test_evb_log_is_a_directory_fails(monkeypatch, workspace):
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     runner = CliRunner()
     # evb-log 指向 output_dir (它是目录), 期望 EVE_LOG_IS_DIR
     result = runner.invoke(
@@ -170,13 +174,13 @@ def test_evb_log_is_a_directory_fails(monkeypatch, workspace):
         catch_exceptions=False,
     )
     assert result.exit_code != 0
-    assert _FakeServiceState.calls == []
+    assert _FakeRunnerState.calls == []
 
 
 def test_empty_evb_log_fails(monkeypatch, workspace):
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     empty = workspace["tmp"] / "empty.log"
     empty.write_text("", encoding="utf-8")
     runner = CliRunner()
@@ -186,7 +190,7 @@ def test_empty_evb_log_fails(monkeypatch, workspace):
         catch_exceptions=False,
     )
     assert result.exit_code != 0
-    assert _FakeServiceState.calls == []
+    assert _FakeRunnerState.calls == []
 
 
 def test_unreadable_evb_log_fails(monkeypatch, workspace):
@@ -196,7 +200,7 @@ def test_unreadable_evb_log_fails(monkeypatch, workspace):
         pytest.skip("POSIX permissions semantics")
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     unreadable = workspace["tmp"] / "no_read.log"
     unreadable.write_text("data", encoding="utf-8")
     unreadable.chmod(0o000)
@@ -208,7 +212,7 @@ def test_unreadable_evb_log_fails(monkeypatch, workspace):
             catch_exceptions=False,
         )
         assert result.exit_code != 0
-        assert _FakeServiceState.calls == []
+        assert _FakeRunnerState.calls == []
     finally:
         unreadable.chmod(0o644)
 
@@ -216,7 +220,7 @@ def test_unreadable_evb_log_fails(monkeypatch, workspace):
 def test_output_dir_parent_unavailable_fails(monkeypatch, workspace):
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     bogus = str(workspace["tmp"] / "no_such_dir" / "out")
     runner = CliRunner()
     result = runner.invoke(
@@ -225,14 +229,14 @@ def test_output_dir_parent_unavailable_fails(monkeypatch, workspace):
         catch_exceptions=False,
     )
     assert result.exit_code != 0
-    assert _FakeServiceState.calls == []
+    assert _FakeRunnerState.calls == []
 
 
 def test_evb_log_path_validation_does_not_leak_content(monkeypatch, workspace):
     """错误信息不得泄露 EVB 日志内容。"""
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     secret = "VERY_SECRET_PHONE_NUMBER_13900000000_AND_IMSI_460123456789012"
     sensitive = workspace["tmp"] / "sensitive.log"
     sensitive.write_text(secret, encoding="utf-8")
@@ -261,7 +265,7 @@ def test_evb_log_path_validation_does_not_leak_content(monkeypatch, workspace):
 def test_existing_artifacts_blocked_by_default(monkeypatch, workspace):
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     (Path(workspace["out"]) / "report.md").write_text("old", encoding="utf-8")
     runner = CliRunner()
     result = runner.invoke(
@@ -270,14 +274,14 @@ def test_existing_artifacts_blocked_by_default(monkeypatch, workspace):
         catch_exceptions=False,
     )
     assert result.exit_code != 0
-    assert _FakeServiceState.calls == [], "service must not be called when overwrite blocked"
+    assert _FakeRunnerState.calls == [], "runner must not be called when overwrite blocked"
     assert (Path(workspace["out"]) / "report.md").read_text(encoding="utf-8") == "old"
 
 
 def test_overwrite_flag_passes_through_to_service(monkeypatch, workspace):
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     (Path(workspace["out"]) / "report.md").write_text("old", encoding="utf-8")
     runner = CliRunner()
     result = runner.invoke(
@@ -293,8 +297,8 @@ def test_overwrite_flag_passes_through_to_service(monkeypatch, workspace):
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert len(_FakeServiceState.calls) == 1
-    assert _FakeServiceState.calls[0]["overwrite"] is True
+    assert len(_FakeRunnerState.calls) == 1
+    assert _FakeRunnerState.calls[0]["overwrite"] is True
 
 
 # ============================================================
@@ -306,7 +310,7 @@ def test_no_loop_flag_required(monkeypatch, workspace):
     """S2: analyze 命令必须允许在没有 --loop/--case 的情况下运行。"""
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     runner = CliRunner()
     result = runner.invoke(
         cli_cmd,
@@ -314,8 +318,8 @@ def test_no_loop_flag_required(monkeypatch, workspace):
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert len(_FakeServiceState.calls) == 1
-    call = _FakeServiceState.calls[0]
+    assert len(_FakeRunnerState.calls) == 1
+    call = _FakeRunnerState.calls[0]
     assert "loop" not in call
     assert "case" not in call
 
@@ -323,7 +327,7 @@ def test_no_loop_flag_required(monkeypatch, workspace):
 def test_no_label_invokes_service_with_default_label(monkeypatch, workspace):
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     runner = CliRunner()
     result = runner.invoke(
         cli_cmd,
@@ -331,14 +335,14 @@ def test_no_label_invokes_service_with_default_label(monkeypatch, workspace):
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert _FakeServiceState.calls[0]["label"] is None
+    assert _FakeRunnerState.calls[0]["label"] is None
 
 
 def test_dry_run_does_not_require_overwrite_when_no_artifacts(monkeypatch, workspace):
     """dry-run 即使无 --overwrite 也合法(无产物保护)。"""
     from modem_log_analyzer.cli import cli as cli_cmd
 
-    _install_fake_service(monkeypatch)
+    _install_fake_runner(monkeypatch)
     runner = CliRunner()
     result = runner.invoke(
         cli_cmd,
@@ -353,4 +357,4 @@ def test_dry_run_does_not_require_overwrite_when_no_artifacts(monkeypatch, works
         catch_exceptions=False,
     )
     assert result.exit_code == 0
-    assert _FakeServiceState.calls[0]["dry_run"] is True
+    assert _FakeRunnerState.calls[0]["dry_run"] is True
