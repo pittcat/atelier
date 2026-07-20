@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 def test_health_open():
     from main import app
+
     c = TestClient(app)
     r = c.get("/health")
     assert r.status_code == 200
@@ -18,6 +19,7 @@ def test_health_open():
 def test_list_agents_requires_token():
     os.environ["GATEWAY_AUTH_TOKEN"] = "secret"
     from main import app
+
     c = TestClient(app)
 
     r = c.get("/agents")

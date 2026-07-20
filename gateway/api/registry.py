@@ -6,6 +6,7 @@
 名必须 ``_``,所以本注册表用 ``AGENT_REGISTRY["..._module"]`` 提供**正确**
 的 import path,而不依赖硬编码 slug-to-module 转换。
 """
+
 from __future__ import annotations
 
 import importlib
@@ -47,6 +48,15 @@ AGENT_REGISTRY: dict[str, dict] = {
         ),
         # sys.path 中含 `agents/`,所以 compound_builder 直连(类似 code_writer)。
         "module": "compound_builder.agent",
+    },
+    "modem-log-analyzer": {
+        "slug": "modem-log-analyzer",
+        "display": "Modem Log Analyzer",
+        "description": (
+            "Atelier 平台下的 NuttX Modem 单轮失败日志分析 Agent。 "
+            "CLI-first: analyze --evb-log <file> --output <dir>; 同步输出 report.md + analysis.json。"
+        ),
+        "module": "modem_log_analyzer.agent",
     },
 }
 
