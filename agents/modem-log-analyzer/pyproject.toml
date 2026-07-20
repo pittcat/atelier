@@ -1,0 +1,65 @@
+[project]
+name = "modem_log_analyzer"
+version = "0.1.0"
+description = "Atelier 平台下的 NuttX Modem 单轮失败日志分析 Agent。"
+readme = "docs/README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Atelier Team", email = "team@example.com" },
+]
+
+dependencies = [
+    "atelier-common>=0.1.0",
+    "langgraph>=0.2",
+    "deepagents>=0.2",
+    "langchain-core>=0.3",
+    "langchain>=0.3",
+    "langsmith>=0.3",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
+    "click>=8.1",
+]
+
+[project.scripts]
+# Unit 1 验收: console script 名为 ``modem-log-analyzer``
+modem-log-analyzer = "modem_log_analyzer.cli:cli"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "langgraph-cli>=0.2",
+    "docker>=7.0",
+]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+atelier-common = { path = "../../libs/common" }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/modem_log_analyzer"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

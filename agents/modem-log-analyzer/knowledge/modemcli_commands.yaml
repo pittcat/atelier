@@ -1,0 +1,48 @@
+version: "0.1.0"
+notes: |
+  ModemCLI 命令知识表 (Project-Level, Plan §1 R3)。
+  这是项目级领域词典: 由嵌入式测试工程师 + Agent 维护。
+  来源: 项目内部 ModemCLI 命令说明 (本地参考, 需工程师校对)。
+commands:
+  # ---- 会话入口 (Plan §1 R3: modemcli 不是业务步骤) ----
+  - name: "modemcli"
+    kind: "session_entry"
+    business_action: "session_entry"
+    description: "ModemCLI 控制台提示符; 不是业务命令"
+    notes: "由 plan 锁定: 仅作为会话入口, 不归类为业务动作"
+
+  # ---- RPC 调度入口 (业务动作由子命令决定) ----
+  - name: "debug_bes_rpc"
+    kind: "rpc_dispatch"
+    business_action: "rpc_dispatch"
+    description: "RPC 调度命令; 实际动作取决于第一个参数"
+    known_arg_ranges:
+      - range: [1, 1]
+        business_action: "call"
+        description: "语音通话 (modem voice call)"
+      - range: [3, 3]
+        business_action: "sms"
+        description: "短信 (modem SMS send)"
+      - range: [4, 4]
+        business_action: "data_ping"
+        description: "数据 / IPv4-IPv6 ping"
+    notes: "未覆盖的子命令保持 rpc_dispatch, 业务动作 unknown"
+
+  # ---- 内建命令 (Plan §1 R3: !ping / !ping6 / !ifconfig) ----
+  - name: "!ping"
+    kind: "builtin"
+    business_action: "data_ping"
+    description: "IPv4 Ping"
+    notes: "第一参数 = 目标 IP"
+
+  - name: "!ping6"
+    kind: "builtin"
+    business_action: "data_ping"
+    description: "IPv6 Ping"
+    notes: "第一参数 = 目标 IPv6"
+
+  - name: "!ifconfig"
+    kind: "builtin"
+    business_action: "setting"
+    description: "网络接口设置/查询"
+    notes: "查看或修改网络接口"

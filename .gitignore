@@ -17,7 +17,6 @@ out/
 .coverage
 coverage.xml
 htmlcov/
-
 # ---------- Virtualenvs ----------
 .venv/
 venv/
@@ -45,6 +44,11 @@ langgraph.local.yaml
 *.log
 logs/
 !ops/logs/.gitkeep
+
+# ---------- Agent test fixtures (override *.log ignore) ----------
+!agents/**/evb.log
+!agents/**/control.log
+!agents/**/*.log
 
 # ---------- Secrets ----------
 .env

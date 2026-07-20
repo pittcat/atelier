@@ -1,0 +1,13 @@
+{
+  "description": "通话期间两次 Ping 都成功; 控制脚本侧 ping 检查断言失败; 板端业务事实 OK, 自动化误报。",
+  "classification": "TEST_AUTOMATION_FAILURE_CONFIRMED",
+  "scenario_substring": "Call",
+  "expected_business_actions": ["Call", "Data/Ping"],
+  "expected_first_anomaly_module": null,
+  "expected_evidence_ref_count_min": 5,
+  "expected_scenario_confidence": "high",
+  "notes": [
+    "数据已脱敏: 电话号码用 [PHONE_REDACTED] 替换, IP 地址用 8.8.8.8 / 8.8.4.4 (公网示例).",
+    "expected.json 由工程师标注, 不得由 Agent 直接从 control.log 的 ERROR 字样生成。"
+  ]
+}

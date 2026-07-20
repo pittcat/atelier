@@ -1,0 +1,5 @@
+[2026-07-19 10:00:00.000] starting case auto_case_modem_52
+[2026-07-19 10:00:01.000] launching modemcli session
+[2026-07-19 10:00:30.000] expecting ping check via !ping 8.8.4.4
+[2026-07-19 10:00:36.000] AssertionError: expected ping success but driver reported FAIL
+[2026-07-19 10:00:37.000] case_result FAIL

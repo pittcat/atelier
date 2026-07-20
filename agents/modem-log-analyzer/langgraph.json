@@ -1,0 +1,12 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "modem_log_analyzer": "./src/modem_log_analyzer/agent.py:agent"
+  },
+  "env": "./.env",
+  "python_version": "3.11",
+  "dockerfile_lines": [],
+  "build": {
+    "dockerfile": "Dockerfile"
+  }
+}

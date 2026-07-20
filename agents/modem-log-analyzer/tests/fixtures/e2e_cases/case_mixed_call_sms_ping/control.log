@@ -1,0 +1,5 @@
+[2026-07-19 13:00:00.000] starting case mixed_loop_99
+[2026-07-19 13:00:01.000] launching modemcli
+[2026-07-19 13:01:00.000] expecting second ping result
+[2026-07-19 13:01:31.000] AssertionError: expected latency < 20ms but got 14ms (treated as test config error)
+[2026-07-19 13:01:32.000] case_result FAIL

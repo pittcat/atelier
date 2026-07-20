@@ -1,0 +1,1 @@
+{"classification": "DEVICE_FAILURE_CONFIRMED", "scenario_substring": "Call", "expected_business_actions": ["call"], "note": "板端 dial 失败"}
