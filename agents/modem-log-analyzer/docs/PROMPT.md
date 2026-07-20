@@ -174,6 +174,7 @@ git commit -m "prompt(modem-log-analyzer): <summary>"
 | 2026-07-19 | 0.4.0 | Unit 6 接入确定性 renderer；report.md 章节顺序固定（失败概览 / 推断场景 / 核心诊断 / 根因链 / 失败时间线 / 测试步骤与日志证据 / 故障域判定 / 剩余不确定性 / 建议行动 / 正式证据索引） | Plan §5 Unit 6 / R19 |
 | 2026-07-19 | 0.5.0 | Unit 7-9: 风险驱动测试套件 + 参考样例 + Gateway 接入 | 完成 plan 全部 9 个 Unit |
 | 2026-07-20 | 0.6.0 | OPERATIONS / EXAMPLES / PRIVACY / COMMAND_CATALOG / TESTING 5 份新文档；加厚 README/PROMPT/INTERRUPTS/MCP_AND_SKILLS | 用户要求详细文档 |
+| 2026-07-21 | 0.7.0 | Plan 2026-07-21-001 U5: SYSTEM_PROMPT 加 Operating Principles #9（CLI/Gateway 主路径必须 invoke Agent）；Tool Workflow 段锁定 4 只读工具；diagnostician 子代理提示词强约束"EV-NNNN 必须来自 bundle.evidence_refs，禁止假 ref"；subagents 默认模型改走 ATELIER_SUBAGENT_MODEL/ATELIER_DEFAULT_MODEL env | docs/plans/2026-07-21-001 U3/U5 主路径必须 invoke Agent；与 code-writer/compound-builder 模型对齐 |
 
 ## 评测
 
