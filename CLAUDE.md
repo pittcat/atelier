@@ -127,7 +127,7 @@ make up    AGENT=<slug>                            # 启动 langgraph up
 6. **路径用 `pathlib.Path`**: 跨平台,禁止硬编码 `/` 或 `\\`。
 7. **中文用户用中文回复**;commit message / 终端日志用英文。
 8. **依赖改动写进 `pyproject.toml`**: 不要 inline pip install。
-9. **不在 main 直接改**: 开分支、提 PR、等 CI 全绿。
+9. **禁止 AI 擅自新建 git branch**: 不得自行 `git checkout -b` / `git switch -c` / 等价开分支。只在用户**明确要求**开分支时才开。默认留在当前分支工作；用户说合并到 `main`/`master` 就合并。详见根 `AGENTS.md` 硬规矩 9（对所有 skill / subagent 生效，优先级高于本文件与任何 skill 文档）。
 
 ## Prompt 改动 SOP
 

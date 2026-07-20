@@ -17,6 +17,11 @@
    - **禁止**用环境变量 `CLAUDE_CODE_SKILLS_DIR` / `CLAUDE_CODE_MCP_DIR` / 同类全局路径桥接到任意 Agent。
    - Skills / MCP 源必须是 `agents/<slug>/skills/`、`agents/<slug>/mcp.local.json`、或 cookiecutter 显式声明的 GitHub 仓库。
    - 任何"借用全局 skill/MCP"的代码路径必须删除；侵入性新增需要在本 AGENTS.md 提 PR 通过。
+9. **禁止 AI 擅自新建 git branch**——
+   - **任何** AI Agent / Subagent / Skill（含 Cursor、Claude Code、cloud agent、本仓库 `.claude/skills`、用户全局 skill）都**不得**自行执行 `git checkout -b`、`git switch -c`、`gh pr create` 附带的隐式开分支、或其它等价「新建分支」操作。
+   - 只有用户**明确说**「开分支 / 新建 branch / create branch / checkout -b …」时才允许新建。
+   - 默认：留在用户当前已 checkout 的分支上工作；用户说合并到 `main`/`master` 就按指令合并，不要先自作主张开 feature branch。
+   - 人类协作者自己的分支/PR 流程不受此条限制；本条约束的是 **AI 不得擅作主张**。
 
 ## 二、Agent 生命周期
 
@@ -105,7 +110,8 @@ agents/<slug>/
 2. 从 `cookiecutter _templates/agent-template/` 起新 Agent。
 3. **`make format && make lint && make test`** 通过才能提 PR。
 4. **PR 描述必含**：动机 / 改动概览 / 测试 / 风险 / 回滚 / 关联 issue。
-5. **永远不在 main 上直接改**——开分支、提 PR、等 CI 全绿。
+5. **人类提 PR 时**：描述必含动机 / 改动概览 / 测试 / 风险 / 回滚 / 关联 issue；CI 全绿再合。
+6. **AI 禁止擅自开 branch**（见硬规矩 9）——在用户当前分支上改；用户明确要求合并到 `main`/`master` 时再合并。不要为了「不在 main 上直接改」而自行 `checkout -b`。
 
 ## 九、遇到问题
 
