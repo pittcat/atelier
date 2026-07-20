@@ -34,10 +34,35 @@ router = APIRouter(prefix="/agents/modem-log-analyzer", tags=["modem-log-analyze
 def _dispatch_runner(**kwargs):
     """Plan U4: 选 runner。
 
-    - ``MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1`` → 确定性规则管线 (合成 e2e / 离线)
+    - ``MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1`` 且
+      ``ATELIER_ENV in {"dev","test"}`` 或 ``MODEM_LOG_ANALYZER_ALLOW_RULES=1``
+      → 确定性规则管线 (合成 e2e / 离线)
     - 默认: ``agent_runner.run_agent_analyze`` (AI Agent 诊断)
+    - 生产环境无 ATELIER_ENV=dev/test 时, 即便误设 CLI_FORCE_RULES 也**拒绝**
+      而非静默降级 (与 CLI guard 一致)。
     """
-    if os.getenv("MODEM_LOG_ANALYZER_CLI_FORCE_RULES") == "1":
+    import logging
+
+    from fastapi import HTTPException
+
+    log = logging.getLogger("gateway.modem_log_analyzer")
+    force = os.getenv("MODEM_LOG_ANALYZER_CLI_FORCE_RULES") == "1"
+    atelier_env = os.getenv("ATELIER_ENV", "production").lower()
+    allow = os.getenv("MODEM_LOG_ANALYZER_ALLOW_RULES") == "1"
+    if force and not (atelier_env in {"dev", "test"} or allow):
+        log.error(
+            "FORCE_RULES_GUARD: refusing to downgrade to rules pipeline in non-dev env"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1 is set but ATELIER_ENV is not "
+                "dev/test and MODEM_LOG_ANALYZER_ALLOW_RULES is unset. Refusing to "
+                "silently downgrade AI Agent diagnosis to deterministic rules."
+            ),
+        )
+    if force:
+        log.warning("FORCE_RULES=1 active — using legacy rules pipeline (not AI)")
         from modem_log_analyzer.analysis_service import AnalysisService
 
         return AnalysisService()._run_rules_pipeline(**kwargs)

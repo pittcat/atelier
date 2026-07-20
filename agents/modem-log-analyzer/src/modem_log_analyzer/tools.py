@@ -51,7 +51,7 @@ def _assert_no_push() -> None:
 # ============================================================
 # 工具 0: 读取本 run 的预处理 bundle
 # ============================================================
-def get_preprocessed_bundle_tool() -> str:
+def get_preprocessed_bundle_tool(_: str = "") -> str:
     """返回本 run 的预处理结果 (JSON 字符串)。
 
     内容包括: run_label / command_summary / evidence_refs (EV-NNNN) /
@@ -59,6 +59,9 @@ def get_preprocessed_bundle_tool() -> str:
 
     必须在 runner 已 set run_context 时调用; 否则返回明确错误字符串,
     防止 Agent 误以为工具静默可用。
+
+    占位参数 ``_`` 仅用于让 langchain StructuredTool 的 args schema 推断稳定
+    (零参数工具在不同 langchain 版本下 invoke({}) 行为不一致)。
     """
     from modem_log_analyzer import run_context as rc
 
@@ -133,11 +136,28 @@ def read_evb_log_slice_tool(start_line: int, end_line: int, max_lines: int = 200
 
 
 # ============================================================
-# 工具 2: 读取项目级控制脚本日志(只读)
+# 工具 2: 读取项目级控制脚本日志(只读; 路径从 run_context 取, 禁止任意路径)
 # ============================================================
-def read_control_log_tool(log_path: str, max_lines: int = 2000) -> str:
-    """Read a control-script log file (text). Used only when CLI provides --control-log."""
-    p = Path(log_path).expanduser().resolve()
+def read_control_log_tool(max_lines: int = 2000) -> str:
+    """Read the control-script log attached to the current run.
+
+    控制日志路径**只能**从 ``run_context`` bundle 读取 —— 不接受 Agent 传入的
+    任意路径参数, 避免被 prompt 注入利用来读 ``/etc/passwd`` 等敏感文件。
+
+    返回: 文本 (或 ``ERROR: ...`` 字符串)。
+    """
+    from modem_log_analyzer import run_context as rc
+
+    try:
+        bundle = rc.require()
+    except RuntimeError as e:
+        return f"ERROR: {e}"
+
+    log_path = bundle.get("control_log_path")
+    if not log_path:
+        return "ERROR: run_context has no control_log_path (--control-log not provided)"
+
+    p = Path(log_path).expanduser()
     if not p.exists() or not p.is_file():
         return f"ERROR: control log not found: {p}"
     try:

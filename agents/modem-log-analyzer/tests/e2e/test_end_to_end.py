@@ -60,6 +60,8 @@ def _run_cli(fx: Path, out_dir: Path) -> tuple[int, dict | None]:
     env["MODEM_LOG_ANALYZER_QUIET"] = "true"
     # Plan U5: 合成 e2e 用例依赖确定性规则管线, 不调真实 LLM
     env["MODEM_LOG_ANALYZER_CLI_FORCE_RULES"] = "1"
+    # Plan U5: 让 FORCE_RULES 守卫放行 (合成 e2e 走非生产路径)
+    env["ATELIER_ENV"] = "test"
     proc = subprocess.run(args, capture_output=True, text=True, cwd=str(REPO), env=env)
     if proc.returncode != 0:
         return proc.returncode, None
@@ -116,6 +118,8 @@ def test_gateway_end_to_end(fx_name: str):
     os.environ["MODEM_LOG_ANALYZER_STAGING_DIR"] = staging
     # Plan U5: gateway 合成 e2e 用确定性规则管线, 不调真实 LLM
     os.environ["MODEM_LOG_ANALYZER_CLI_FORCE_RULES"] = "1"
+    # Plan U5: 让 FORCE_RULES 守卫放行
+    os.environ["ATELIER_ENV"] = "test"
 
     sys.path.insert(0, str(REPO))
     sys.path.insert(0, str(REPO / "agents/modem-log-analyzer/src"))

@@ -27,6 +27,8 @@ for p in (SRC, LIB_SRC, GATEWAY_API, GATEWAY_ROOT, WORKSPACE_ROOT):
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-no-key")
 # Plan U5: 合成 e2e 用规则管线, 不打真实 LLM
 os.environ.setdefault("MODEM_LOG_ANALYZER_CLI_FORCE_RULES", "1")
+# Plan U5: 让 FORCE_RULES 守卫放行测试/合成路径
+os.environ.setdefault("ATELIER_ENV", "test")
 
 
 def pytest_collection_modifyitems(config, items):

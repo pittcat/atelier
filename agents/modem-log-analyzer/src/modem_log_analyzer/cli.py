@@ -59,11 +59,29 @@ def _default_runner(
     """CLI 默认的诊断入口。
 
     Plan U3 主路径: AI Agent (``agent_runner.run_agent_analyze``)。
-    Plan U5 降级: 在 ``MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1`` 时退回
-    ``AnalysisService._run_rules_pipeline`` (用于离线单测、合成 e2e 等
-    不依赖真实 LLM 的场景)。生产部署**不得**显式打开此开关。
+    Plan U5 降级: 在 ``MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1`` 且
+    ``ATELIER_ENV in {"dev","test"}`` 或额外 ``MODEM_LOG_ANALYZER_ALLOW_RULES=1`` 时,
+    才退回 ``AnalysisService._run_rules_pipeline``。生产环境无这两个 env 标记时,
+    即便误设 ``CLI_FORCE_RULES`` 也会**显式拒绝**而非静默降级 — 防止 Agent 路径被
+    误关而伪装 PASS。
     """
-    if os.getenv("MODEM_LOG_ANALYZER_CLI_FORCE_RULES") == "1":
+    force = os.getenv("MODEM_LOG_ANALYZER_CLI_FORCE_RULES") == "1"
+    atelier_env = os.getenv("ATELIER_ENV", "production").lower()
+    allow = os.getenv("MODEM_LOG_ANALYZER_ALLOW_RULES") == "1"
+    if force and not (atelier_env in {"dev", "test"} or allow):
+        click.echo(
+            "ERROR [FORCE_RULES_GUARD]: MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1 is set but "
+            "ATELIER_ENV is not dev/test and MODEM_LOG_ANALYZER_ALLOW_RULES is unset. "
+            "Refusing to silently downgrade AI Agent diagnosis to deterministic rules.",
+            err=True,
+        )
+        raise SystemExit(2)
+    if force:
+        click.echo(
+            "[cli] WARN: MODEM_LOG_ANALYZER_CLI_FORCE_RULES=1 — using legacy rules pipeline "
+            "(not an AI diagnosis).",
+            err=True,
+        )
         from modem_log_analyzer.analysis_service import AnalysisService
 
         return AnalysisService()._run_rules_pipeline(
