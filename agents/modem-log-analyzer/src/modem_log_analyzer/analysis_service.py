@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -121,9 +122,22 @@ class AnalysisService:
             classification=classification_enum,
         )
 
-        # 8. 时间线 + 根因链
+        # 8. 时间线 + 根因链 + 控制侧关键证据
+        # 先缩短首异常摘要, 再入根因链 (避免链里塞整行双时间戳)
+        if first_anomaly and first_anomaly.get("summary"):
+            first_anomaly = {
+                **first_anomaly,
+                "summary": _shorten_log_snippet(first_anomaly["summary"]),
+            }
+
         timeline = _build_timeline(events, evidence_refs)
-        root_cause_chain = _build_root_cause_chain(first_anomaly, evidence_refs)
+        control_evidence = _control_evidence_items(control_events)
+        root_cause_chain = _build_root_cause_chain(
+            first_anomaly,
+            evidence_refs,
+            control_evidence=control_evidence,
+        )
+        business_actions = _collect_business_actions(events)
 
         # 9. notes + suggested_actions
         notes: list[str] = []
@@ -149,6 +163,10 @@ class AnalysisService:
         if not is_complete:
             notes.append("板端证据不完整; 分类降级以避免过早结论。")
             suggested.append("检查是否有缺失的板端回调或异步事件。")
+        if first_anomaly is not None and has_direct_evidence:
+            notes.append(
+                "板端与控制脚本均有失败信号; 请对照「控制脚本要点」与板端首异常判断主责。"
+            )
 
         result: dict[str, Any] = {
             "schema_version": ANALYSIS_SCHEMA_VERSION,
@@ -157,6 +175,7 @@ class AnalysisService:
             "root_cause_confidence": root_cause_confidence,
             "scenario": scenario,
             "scenario_confidence": scenario_confidence,
+            "business_actions": business_actions,
             "first_anomaly": first_anomaly,
             "evidence_refs": [
                 {
@@ -172,6 +191,7 @@ class AnalysisService:
             "timeline": timeline,
             "root_cause_chain": root_cause_chain,
             "control_log_used": has_control_log,
+            "control_evidence": control_evidence,
             "external_result": "FAIL",
             "notes": notes,
             "suggested_actions": suggested,
@@ -183,29 +203,167 @@ class AnalysisService:
                 "events_count": len(events),
                 "interrupt_request": interrupt_request,
                 "control_log_events": len(control_events),
+                "timeline_total_before_filter": len(events),
             },
         }
         return result
 
 
+_NOISE_RAW_RE = re.compile(
+    r"CPU USAGE|RingPlayOnce|no ring file|OFONO_DFX|^\s*~~~+\s*$",
+    re.IGNORECASE,
+)
+_TS_PREFIX_RE = re.compile(
+    r"^(?:\d{4}-\d{2}-\d{2}T[\d:.]+Z\s+)?"
+    r"(?:\d{4}-\d{2}-\d{2}\s+\[[\d.]+\]\s*)?"
+)
+
+
+def _shorten_log_snippet(text: str, *, max_len: int = 160) -> str:
+    """去掉行首时间戳壳, 截断过长摘要。"""
+    cleaned = (text or "").strip()
+    # 若含 Tab 分隔的 merge 行, 取板端侧
+    if "\t" in cleaned:
+        cleaned = cleaned.split("\t", 1)[-1].strip()
+    cleaned = _TS_PREFIX_RE.sub("", cleaned).strip()
+    # 去掉 modemcli> 前缀噪音但保留其后内容
+    if "modemcli>" in cleaned:
+        cleaned = cleaned.split("modemcli>", 1)[-1].strip()
+    if len(cleaned) > max_len:
+        return cleaned[: max_len - 1] + "…"
+    return cleaned
+
+
+def _collect_business_actions(events: list[dict]) -> list[str]:
+    """从 command 事件收集可读业务动作名。"""
+    mapping = {
+        "call": "Call",
+        "sms": "SMS",
+        "data_ping": "Data/Ping",
+        "setting": "Setting",
+    }
+    seen: list[str] = []
+    for ev in events:
+        if ev.get("kind") != "command":
+            continue
+        label = mapping.get(ev.get("business_action") or "")
+        if label and label not in seen:
+            seen.append(label)
+    return seen
+
+
+def _control_evidence_items(control_events: list[dict]) -> list[dict[str, Any]]:
+    """抽出控制日志中的直接证据行, 供报告「控制脚本要点」。"""
+    items: list[dict[str, Any]] = []
+    for ev in control_events:
+        if not ev.get("has_direct_evidence"):
+            continue
+        raw = ev.get("raw_text") or ""
+        items.append(
+            {
+                "line_no": ev.get("line_no"),
+                "summary": _shorten_log_snippet(raw, max_len=200),
+                "raw_text": raw,
+            }
+        )
+    return items
+
+
+def _is_significant_event(ev: dict) -> bool:
+    """时间线只保留对工程师有用的事件。"""
+    kind = ev.get("kind")
+    raw = ev.get("raw_text") or ""
+    if _NOISE_RAW_RE.search(raw):
+        return False
+    if kind == "command":
+        return True
+    if kind == "session_entry":
+        return False
+    if kind in ("callback", "response"):
+        outcome = ev.get("terminal_outcome")
+        if outcome == "failure":
+            return True
+        if outcome == "success":
+            low = raw.lower()
+            # ping 回显
+            if "bytes from" in low:
+                return True
+            # 排除协议栈噪声 (IMS_/AT_/RIL 长日志里常含 SEND OK)
+            if re.search(r"\b(IMS_|AT_|RIL|SIP_|OFONO)\b", raw):
+                return False
+            # 仅短业务回显
+            payload = raw.split("\t", 1)[-1] if "\t" in raw else raw
+            if len(payload) <= 120 and re.search(
+                r"\b(OK|ping OK|ifconfig ok)\b",
+                payload,
+                re.IGNORECASE,
+            ):
+                return True
+            return False
+        return False
+    return False
+
+
 def _build_timeline(events: list[dict], refs: list) -> list[dict[str, Any]]:
-    """从 events 构造简化时间线。"""
+    """从 events 构造**精简**时间线 (仅命令 + 明确成败回调; ping 回复合并)。"""
     timeline: list[dict[str, Any]] = []
     by_line: dict[int, object] = {r.line_no: r for r in refs if r.line_no}
+    omitted = 0
+    ping_burst: list[dict] = []
+
+    def _flush_ping_burst() -> None:
+        nonlocal ping_burst
+        if not ping_burst:
+            return
+        first = ping_burst[0]
+        n = len(ping_burst)
+        if n == 1:
+            timeline.append(first)
+        else:
+            timeline.append(
+                {
+                    "ts": first.get("ts"),
+                    "event": f"ping 回复成功 ×{n}（已合并连续 icmp 回显）",
+                    "ref_id": first.get("ref_id"),
+                    "source_module": first.get("source_module"),
+                    "kind": "ping_burst",
+                }
+            )
+        ping_burst = []
 
     for ev in events:
         if ev.get("kind") not in ("command", "callback", "response", "session_entry"):
+            continue
+        if not _is_significant_event(ev):
+            omitted += 1
             continue
         line_no = int(ev.get("line_no") or 0)
         ref = by_line.get(line_no)
         ref_id = getattr(ref, "ref_id", None) if ref else None
         desc = _timeline_description(ev)
+        item = {
+            "ts": ev.get("device_ts") or ev.get("capture_ts"),
+            "event": desc,
+            "ref_id": ref_id,
+            "source_module": ev.get("module"),
+            "kind": ev.get("kind"),
+        }
+        raw = (ev.get("raw_text") or "").lower()
+        if ev.get("terminal_outcome") == "success" and "bytes from" in raw:
+            ping_burst.append(item)
+            continue
+        _flush_ping_burst()
+        timeline.append(item)
+
+    _flush_ping_burst()
+    if omitted:
         timeline.append(
             {
-                "ts": ev.get("device_ts") or ev.get("capture_ts"),
-                "event": desc,
-                "ref_id": ref_id,
-                "source_module": ev.get("module"),
+                "ts": None,
+                "event": f"（已省略 {omitted} 条噪声/未知回调, 详见 analysis.json）",
+                "ref_id": None,
+                "source_module": None,
+                "kind": "omitted_summary",
             }
         )
     return timeline
@@ -220,42 +378,68 @@ def _timeline_description(ev: dict) -> str:
     outcome = ev.get("terminal_outcome")
     business = ev.get("business_action")
 
-    if kind == "session_entry":
-        return f"会话入口 {cmd or 'modemcli'} (模块={module or '-'})"
     if kind == "command":
-        arg_str = " ".join(args[:3])
-        if len(args) > 3:
-            arg_str += " ..."
-        return f"命令 {cmd} {arg_str} (业务={business or 'unknown'}; 模块={module or '-'})"
+        arg_str = " ".join(str(a) for a in args[:4])
+        if len(args) > 4:
+            arg_str += " …"
+        biz = business or "unknown"
+        mod = f"; 模块={module}" if module else ""
+        return f"{cmd} {arg_str}".strip() + f"  [{biz}{mod}]"
     if kind in ("callback", "response"):
-        return f"板端回调 ({module or '-'}; outcome={outcome or 'unknown'})"
+        snippet = _shorten_log_snippet(ev.get("raw_text") or "", max_len=80)
+        label = "成功" if outcome == "success" else "失败" if outcome == "failure" else "回调"
+        mod = module or "-"
+        return f"{label} [{mod}] {snippet}".strip()
     return f"事件 ({kind})"
 
 
-def _build_root_cause_chain(first_anomaly: dict | None, refs: list) -> list[dict[str, Any]]:
+def _build_root_cause_chain(
+    first_anomaly: dict | None,
+    refs: list,
+    *,
+    control_evidence: list[dict] | None = None,
+) -> list[dict[str, Any]]:
     """构造最小根因链: trigger → propagation → terminal impact。"""
-    if first_anomaly is None:
+    if first_anomaly is None and not control_evidence:
         return []
-    return [
-        {
-            "role": "trigger",
-            "description": first_anomaly.get("summary") or "首个异常步骤",
-            "ref_ids": [first_anomaly["ref_id"]] if first_anomaly.get("ref_id") else [],
-            "gap": None,
-        },
-        {
-            "role": "propagation",
-            "description": "异常传播过程",
-            "ref_ids": [],
-            "gap": "未明确识别传播路径; 可由控制脚本日志或后续命令缺失推断",
-        },
-        {
-            "role": "terminal_impact",
-            "description": "最终外部 FAIL",
-            "ref_ids": [],
-            "gap": None,
-        },
-    ]
+    chain: list[dict[str, Any]] = []
+    if first_anomaly is not None:
+        chain.append(
+            {
+                "role": "trigger",
+                "description": first_anomaly.get("summary") or "首个板端异常",
+                "ref_ids": [first_anomaly["ref_id"]] if first_anomaly.get("ref_id") else [],
+                "gap": None,
+            }
+        )
+        chain.append(
+            {
+                "role": "propagation",
+                "description": "异常影响后续业务观察或验收",
+                "ref_ids": [],
+                "gap": "传播路径未从日志自动还原; 请结合命令顺序人工确认",
+            }
+        )
+    if control_evidence:
+        ctrl = control_evidence[0]
+        chain.append(
+            {
+                "role": "terminal_impact",
+                "description": f"控制脚本判定失败: {ctrl.get('summary')}",
+                "ref_ids": [],
+                "gap": None,
+            }
+        )
+    elif first_anomaly is not None:
+        chain.append(
+            {
+                "role": "terminal_impact",
+                "description": "外部 case 结果为 FAIL",
+                "ref_ids": [],
+                "gap": None,
+            }
+        )
+    return chain
 
 
 __all__ = ["AnalysisService"]

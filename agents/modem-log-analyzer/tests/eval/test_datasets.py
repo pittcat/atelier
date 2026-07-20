@@ -108,11 +108,10 @@ def test_state_machine_command_followed_by_callback():
             output_dir=td,
             dry_run=True,
         )
-        # timeline 至少包含 session_entry + command + callback
+        # timeline 精简后只保留命令 + 明确成败回调 (可读性优先)
         kinds = [ev.get("event", "") for ev in result["timeline"]]
-        assert any("会话入口" in k for k in kinds)
-        assert any("命令" in k for k in kinds)
-        assert any("回调" in k for k in kinds)
+        assert any("debug_bes_rpc" in k for k in kinds)
+        assert any("OK" in k or "失败" in k or "成功" in k or "ERROR" in k for k in kinds)
 
 
 # ============================================================

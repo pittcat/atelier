@@ -2,19 +2,9 @@
 
 按 Plan §5 Unit 6:
   - 从 AnalysisResult dict 渲染两种产物, 不调用 LLM。
-  - 章节顺序固定 (Plan R19):
-      1. 失败概览
-      2. 推断的测试场景与基线
-      3. 核心诊断
-      4. 根因链
-      5. 失败时间线
-      6. 测试步骤与日志证据
-      7. 故障域判定与推理
-      8. 剩余不确定性
-      9. 建议行动
-     10. 正式证据索引
-  - 原子写入: 临时文件 + os.replace (Plan §1: "原子提交")。
-  - 终端摘要: 不回显原文(可能含号码/IMSI/ICCID); 只显示分类 + ref_id 列表。
+  - 章节顺序固定 (Plan R19)。
+  - 可读性优先: 时间线/证据只展示关键条目; 完整索引留在 analysis.json。
+  - 原子写入: 临时文件 + os.replace。
 """
 
 from __future__ import annotations
@@ -82,6 +72,7 @@ def _render_failure_overview(result: dict) -> str:
     external = result.get("external_result", "FAIL")
     scenario = result.get("scenario") or "(未推断)"
     scenario_conf = result.get("scenario_confidence") or "n/a"
+    control = "是" if result.get("control_log_used") else "否"
 
     return (
         "## 失败概览\n\n"
@@ -90,53 +81,83 @@ def _render_failure_overview(result: dict) -> str:
         f"- **推断场景**: {scenario} (置信度: {scenario_conf})\n"
         f"- **诊断分类**: `{classification}`\n"
         f"- **根因置信度**: `{confidence}`\n"
+        f"- **是否使用控制脚本日志**: {control}\n"
     )
 
 
 def _render_scenario(result: dict) -> str:
     scenario = result.get("scenario") or "(未推断)"
     scenario_conf = result.get("scenario_confidence") or "n/a"
-    business_actions: list[str] = []
-    for ev in result.get("evidence_refs") or []:
-        text = ev.get("raw_text", "")
-        if "debug_bes_rpc 1" in text:
-            business_actions.append("Call")
-        elif "debug_bes_rpc 3" in text:
-            business_actions.append("SMS")
-        elif "!ping" in text or "!ping6" in text:
-            business_actions.append("Data/Ping")
-        elif "!ifconfig" in text:
-            business_actions.append("Setting")
+    actions = result.get("business_actions") or []
+    if not actions:
+        # 兼容旧结果: 从 timeline / evidence 里猜 (正确 RPC 组)
+        actions = _infer_actions_fallback(result)
     return (
         "## 推断的测试场景与基线\n\n"
         f"- **场景**: {scenario}\n"
         f"- **场景置信度**: {scenario_conf}\n"
-        f"- **识别到的业务动作**: {', '.join(sorted(set(business_actions))) or '(未识别)'}\n"
-        "- **验收条件**: 由 Agent 根据命令序列推断, 详见 `核心诊断` 与 `失败时间线` 章节。\n"
-        "- **来源**: 自动推断 (用户提供 case 描述时本节会显示用户提供)。\n"
+        f"- **识别到的业务动作**: {', '.join(actions) or '(未识别)'}\n"
+        "- **验收条件**: 由命令序列自动推断; 以「核心诊断」与精简时间线为准。\n"
+        "- **来源**: 自动推断。\n"
     )
+
+
+def _infer_actions_fallback(result: dict) -> list[str]:
+    found: list[str] = []
+    texts = " ".join(
+        (e.get("raw_text") or "") + " " + (e.get("event") or "")
+        for e in (result.get("evidence_refs") or []) + (result.get("timeline") or [])
+    )
+    checks = [
+        ("debug_bes_rpc 0", "Call"),
+        ("debug_bes_rpc 4", "SMS"),
+        ("!ping", "Data/Ping"),
+        ("!ping6", "Data/Ping"),
+        ("debug_bes_rpc 1", "Data/Ping"),
+        ("!ifconfig", "Setting"),
+    ]
+    for needle, label in checks:
+        if needle in texts and label not in found:
+            found.append(label)
+    return found
 
 
 def _render_core_diagnosis(result: dict) -> str:
     classification = result.get("classification", "UNKNOWN")
     fa = result.get("first_anomaly")
+    control_used = bool(result.get("control_log_used"))
+    ctrl_items = result.get("control_evidence") or []
+
+    lines = ["## 核心诊断\n", f"- **分类**: `{classification}`"]
     if fa:
-        return (
-            "## 核心诊断\n\n"
-            f"- **分类**: `{classification}`\n"
-            f"- **首个异常步骤**: 行 {fa.get('line_no')} / {fa.get('ref_id')} "
-            f"(模块={fa.get('module') or '-'}; ts={fa.get('ts') or '-'})\n"
-            f"- **最可能原因**: {fa.get('summary', '(未描述)')}\n"
-            f"- **直接影响**: 业务状态流中断, 触发外部 FAIL。\n"
-            "- **结论边界**: 仅基于 EVB 日志; 控制脚本日志可补充或反驳此结论 (见 R10/R16)。\n"
+        lines.append(
+            f"- **首个板端异常**: 行 {fa.get('line_no')} / `{fa.get('ref_id')}` "
+            f"(模块={fa.get('module') or '-'}; ts={fa.get('ts') or '-'})"
         )
-    return (
-        "## 核心诊断\n\n"
-        f"- **分类**: `{classification}`\n"
-        "- **已验证的关键状态**: 板端业务动作正常, 回调 OK, 未发现 ERROR/FAIL 关键字。\n"
-        "- **缺失证据**: 终端事件、外部断言、控制脚本侧错误 (Unit 5 interrupt 已请求)。\n"
-        "- **结论边界**: 仅 EVB 日志无法解释外部 FAIL, 需控制脚本日志确认是否自动化误报。\n"
-    )
+        lines.append(f"- **异常摘要**: {fa.get('summary', '(未描述)')}")
+        lines.append("- **直接影响**: 该步骤偏离预期, 与外部 FAIL 时间线相关。")
+    else:
+        lines.append("- **板端异常**: 未发现明确 ERROR/FAIL/超时类信号。")
+
+    if ctrl_items:
+        lines.append("- **控制脚本要点**:")
+        for item in ctrl_items[:5]:
+            ln = item.get("line_no")
+            lines.append(f"  - 行 {ln}: {item.get('summary')}")
+    elif control_used:
+        lines.append("- **控制脚本要点**: 已提供控制日志, 但未匹配到断言/FAIL 类直接证据。")
+    else:
+        lines.append("- **控制脚本要点**: 未提供。")
+
+    if control_used:
+        lines.append(
+            "- **结论边界**: 同时参考了 EVB 与控制脚本; 分类不得把外部 FAIL 直接等同板端产品故障。"
+        )
+    else:
+        lines.append(
+            "- **结论边界**: 仅基于 EVB; 控制脚本可补充或反驳此结论。"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def _render_root_cause_chain(result: dict) -> str:
@@ -144,8 +165,7 @@ def _render_root_cause_chain(result: dict) -> str:
     if not chain:
         return (
             "## 根因链\n\n"
-            "- 未发现板端异常, 无根因链可构造。\n"
-            "- **缺口**: 控制脚本日志缺失; 若后续提供, 链可重建。\n"
+            "- 未构造根因链 (板端无首异常且控制侧无直接证据)。\n"
         )
     lines = ["## 根因链\n"]
     for link in chain:
@@ -153,8 +173,9 @@ def _render_root_cause_chain(result: dict) -> str:
         desc = link.get("description", "(未描述)")
         ref_ids = link.get("ref_ids") or []
         gap = link.get("gap")
-        ref_str = ", ".join(ref_ids) if ref_ids else "(无)"
-        lines.append(f"- **{role}**: {desc}  \n  证据: {ref_str}")
+        ref_str = ", ".join(f"`{r}`" for r in ref_ids) if ref_ids else "—"
+        lines.append(f"- **{role}**: {desc}")
+        lines.append(f"  - 证据: {ref_str}")
         if gap:
             lines.append(f"  - 缺口: {gap}")
     return "\n".join(lines)
@@ -163,50 +184,119 @@ def _render_root_cause_chain(result: dict) -> str:
 def _render_timeline(result: dict) -> str:
     timeline = result.get("timeline") or []
     if not timeline:
-        return "## 失败时间线\n\n- 无时间线事件 (板端无业务动作或全部为 noise)。\n"
-    lines = ["## 失败时间线\n"]
+        return "## 失败时间线\n\n- 无关键业务事件。\n"
+
+    lines = [
+        "## 失败时间线\n",
+        "> 仅列出命令与明确成败回调; 噪声行已省略。\n",
+    ]
     for ev in timeline:
-        ts = ev.get("ts") or "-"
+        if ev.get("kind") == "omitted_summary":
+            lines.append(f"- _{ev.get('event')}_")
+            continue
+        ts = ev.get("ts") or "—"
         desc = ev.get("event", "")
-        ref = ev.get("ref_id") or "-"
-        mod = ev.get("source_module") or "-"
-        lines.append(f"- `{ts}` [{mod}] {desc}  \n  证据: {ref}")
+        ref = ev.get("ref_id")
+        mod = ev.get("source_module")
+        meta = []
+        if mod:
+            meta.append(str(mod))
+        if ref:
+            meta.append(f"`{ref}`")
+        suffix = f"  ({', '.join(meta)})" if meta else ""
+        lines.append(f"- `{ts}` {desc}{suffix}")
     return "\n".join(lines)
+
+
+def _cited_ref_ids(result: dict) -> set[str]:
+    """报告正文真正引用到的 evidence id (不含合并 ping 噪声)。"""
+    cited: set[str] = set()
+    fa = result.get("first_anomaly") or {}
+    if fa.get("ref_id"):
+        cited.add(fa["ref_id"])
+    for link in result.get("root_cause_chain") or []:
+        for rid in link.get("ref_ids") or []:
+            cited.add(rid)
+    for ev in result.get("timeline") or []:
+        kind = ev.get("kind")
+        if kind in {"omitted_summary", "ping_burst"}:
+            continue
+        # 时间线里的失败回调 + 命令才进正文证据
+        if kind == "command" and ev.get("ref_id"):
+            cited.add(ev["ref_id"])
+        event = (ev.get("event") or "")
+        if ev.get("ref_id") and ("失败" in event or "No response" in event or "ERROR" in event):
+            cited.add(ev["ref_id"])
+    return cited
 
 
 def _render_steps_and_evidence(result: dict) -> str:
     refs = result.get("evidence_refs") or []
     if not refs:
         return "## 测试步骤与日志证据\n\n- 无 evidence_refs。\n"
-    lines = ["## 测试步骤与日志证据\n"]
-    for ev in refs:
+
+    by_id = {r.get("ref_id"): r for r in refs if r.get("ref_id")}
+    cited = _cited_ref_ids(result)
+
+    # 额外纳入: 看起来像命令的证据行 (modemcli / debug_bes_rpc / !ping)
+    for r in refs:
+        text = r.get("raw_text") or ""
+        if any(k in text for k in ("debug_bes_rpc", "!ping", "!ifconfig", "!ping6")):
+            if r.get("ref_id"):
+                cited.add(r["ref_id"])
+
+    # 保序
+    ordered = [r for r in refs if r.get("ref_id") in cited]
+    omitted = len(refs) - len(ordered)
+
+    lines = [
+        "## 测试步骤与日志证据\n",
+        f"> 展示 {len(ordered)} 条关键证据"
+        + (f"（另有 {omitted} 条噪声/次要行仅存于 analysis.json）" if omitted else "")
+        + "。\n",
+    ]
+    for ev in ordered:
         rid = ev.get("ref_id")
         ln = ev.get("line_no")
-        ts = ev.get("timestamp") or "-"
-        mod = ev.get("module") or "-"
-        text = ev.get("raw_text") or ""
-        lines.append(f"- `{rid}` (行 {ln}, 模块={mod}, ts={ts}):\n  ```\n  {text}\n  ```")
+        ts = ev.get("timestamp") or "—"
+        mod = ev.get("module") or "—"
+        text = _clip_raw(ev.get("raw_text") or "")
+        lines.append(f"- `{rid}` (行 {ln}, {mod}, {ts}):")
+        lines.append(f"  ```\n  {text}\n  ```")
     return "\n".join(lines)
+
+
+def _clip_raw(text: str, *, max_len: int = 240) -> str:
+    t = text.strip()
+    if "\t" in t:
+        # merge.log: 显示板端侧, 保留可读性
+        t = t.split("\t", 1)[-1].strip()
+    if len(t) > max_len:
+        return t[: max_len - 1] + "…"
+    return t
 
 
 def _render_classification_reasoning(result: dict) -> str:
     classification = result.get("classification", "UNKNOWN")
     external = result.get("external_result", "FAIL")
     control_used = result.get("control_log_used", False)
+    ctrl_n = len(result.get("control_evidence") or [])
     return (
         "## 故障域判定与推理\n\n"
-        f"- **外部测试结果**: `{external}` (与 Agent 故障归因**分离**, Plan §1 R13/R14)。\n"
-        f"- **Agent 诊断分类**: `{classification}`\n"
-        f"- **控制脚本日志**: {'已使用' if control_used else '未提供 / 未使用'}\n"
-        "- **推理**: 依据 ``decide_classification`` 决策矩阵 (R13); 仅 EVB 日志不得宣称自动化误报; "
-        "TEST_AUTOMATION_FAILURE_CONFIRMED 必须有控制脚本侧直接证据。\n"
+        f"- **外部测试结果**: `{external}`（与诊断分类分离）\n"
+        f"- **诊断分类**: `{classification}`\n"
+        f"- **控制脚本日志**: {'已使用' if control_used else '未提供'}"
+        + (f"（直接证据 {ctrl_n} 条）" if control_used else "")
+        + "\n"
+        "- **规则要点**: `TEST_AUTOMATION_FAILURE_CONFIRMED` 仅在控制侧有直接证据且"
+        "板端无产品异常时可确认; 仅 EVB 不得宣称自动化误报。\n"
     )
 
 
 def _render_uncertainties(result: dict) -> str:
     notes = result.get("notes") or []
     if not notes:
-        return "## 剩余不确定性\n\n- 未列出额外不确定性。\n"
+        return "## 剩余不确定性\n\n- 无额外不确定性记录。\n"
     lines = ["## 剩余不确定性\n"]
     for n in notes:
         lines.append(f"- {n}")
@@ -216,7 +306,7 @@ def _render_uncertainties(result: dict) -> str:
 def _render_actions(result: dict) -> str:
     actions = result.get("suggested_actions") or []
     if not actions:
-        return "## 建议行动\n\n- 未列出建议。\n"
+        return "## 建议行动\n\n- 无额外建议。\n"
     lines = ["## 建议行动\n"]
     for a in actions:
         lines.append(f"- {a}")
@@ -227,19 +317,32 @@ def _render_evidence_index(result: dict) -> str:
     refs = result.get("evidence_refs") or []
     if not refs:
         return "## 正式证据索引\n\n- (空)\n"
+
+    cited = _cited_ref_ids(result)
+    for r in refs:
+        text = r.get("raw_text") or ""
+        if any(k in text for k in ("debug_bes_rpc", "!ping", "!ifconfig", "!ping6")):
+            if r.get("ref_id"):
+                cited.add(r["ref_id"])
+
+    key_refs = [r for r in refs if r.get("ref_id") in cited]
+    omitted = len(refs) - len(key_refs)
+
     lines = [
         "## 正式证据索引\n",
+        f"> 关键引用 {len(key_refs)} 条"
+        + (f"; 完整 {len(refs)} 条见同目录 `analysis.json`" if omitted else "")
+        + "。\n",
         "| 证据 ID | 来源 | 行号 | 模块 | 时间戳 |",
         "| --- | --- | --- | --- | --- |",
     ]
-    for ev in refs:
+    for ev in key_refs:
         rid = ev.get("ref_id")
         src = ev.get("source")
         ln = ev.get("line_no")
-        mod = ev.get("module") or "-"
-        ts = ev.get("timestamp") or "-"
+        mod = ev.get("module") or "—"
+        ts = ev.get("timestamp") or "—"
         lines.append(f"| `{rid}` | {src} | {ln} | {mod} | {ts} |")
-    lines.append("\n> 本节是报告其它章节中所有 `EV-NNNN` 引用的真相之源。")
     return "\n".join(lines)
 
 
@@ -268,6 +371,9 @@ def render_terminal_summary(result: dict[str, Any]) -> str:
     confidence = result.get("root_cause_confidence", "low")
     scenario = result.get("scenario") or "(未推断)"
     ref_count = len(result.get("evidence_refs") or [])
+    timeline_n = len(
+        [t for t in (result.get("timeline") or []) if t.get("kind") != "omitted_summary"]
+    )
     first_anomaly = result.get("first_anomaly") or {}
     fa_line = ""
     if first_anomaly:
@@ -277,15 +383,16 @@ def render_terminal_summary(result: dict[str, Any]) -> str:
             f"(模块={first_anomaly.get('module') or '-'})"
         )
 
-    ref_ids = [e.get("ref_id") for e in (result.get("evidence_refs") or [])]
-    ref_ids_str = ", ".join(ref_ids[:8]) + (" ..." if len(ref_ids) > 8 else "")
+    cited = sorted(_cited_ref_ids(result))
+    ref_ids_str = ", ".join(cited[:8]) + (" ..." if len(cited) > 8 else "")
 
     notes_count = len(result.get("notes") or [])
 
     return (
         f"[modem-log-analyzer] classification={classification} confidence={confidence}\n"
         f"scenario: {_redact_phone_digits(scenario)}{fa_line}\n"
-        f"evidence refs ({ref_count}): {ref_ids_str}\n"
+        f"timeline events: {timeline_n}; evidence total: {ref_count}; "
+        f"cited: {ref_ids_str or '(none)'}\n"
         f"notes: {notes_count} item(s)\n"
     )
 
