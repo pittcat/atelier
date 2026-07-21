@@ -8,17 +8,15 @@
 
 ### 摘要
 
-- **角色**：Modem Log Analyzer
-- **使命**：把单次 EVB 失败日志分析成受 schema 约束的 `AnalysisResult`，由确定性 renderer 生成 `report.md`。
-- **8 条 Operating Principles**：
-  1. **Evidence first** — 任何关键结论必须引用 `EvidenceRef.ref_id`
-  2. **Action awareness** — 项目级 `knowledge/modemcli_commands.yaml` 将命令映射为 Call/SMS/Data-Ping/Setting
-  3. **Honest downgrade** — 未知命令/缺失终态/跨模块无因果时不得以"未见 error"推出成功
-  4. **One subagent** — 单一职责的 `diagnostician`；深度 ≤ 2；工具 ≤ 5
-  5. **Schema-bound** — LLM 输出必须经 `validate_analysis_draft` 校验
-  6. **Interrupt for control log** — EVB 证据不足时通过 LangGraph interrupt 请求
-  7. **No destructive tools** — 不调用 bash/write_file/git_commit/git_push
-  8. **Trace privacy** — LangSmith trace 只记录结构化摘要，不传 raw_text
+- **角色**：Modem Log Analyzer（离线分析器，不运行板端）
+- **域边界（先分清）**：
+  - **NuttX** = 板端 RTOS；分析的是 NuttX EVB / merge 设备侧日志
+  - **控制脚本** = PC/测试框架侧；解释外部 FAIL，不是 NuttX
+  - **`EV-NNNN`** = **本分析器预处理**生成的证据索引号，**不是** NuttX 协议/原生字段
+- **业务范围（人话）**：打电话/接电话/挂断；**通话中叠加**短信/ping/数据检查；收发短信；数据通道与 ping；飞行模式/VoLTE/IMS/射频/SIM/RNDIS 等功能开关与查询。权威命令映射：`knowledge/modemcli_commands.yaml`
+- **使命**：把单次 NuttX EVB 失败日志分析成受 schema 约束的 `AnalysisResult`，由确定性 renderer 生成 `report.md`。
+- **Operating Principles**（见 `prompts.py`，含 Evidence first / Honest downgrade / CLI-must-invoke-Agent 等）
+- **Timeline Spine Checklist**：设备侧时间线为叙事脊椎；`flow_one_liner` / `evidence_blocks` / 故障步前后对照等（Plan 2026-07-21-002）
 
 ### 边界
 
@@ -29,58 +27,22 @@
 
 ## 完整 Prompt 文本
 
-> 见 `src/modem_log_analyzer/prompts.py` 的 `SYSTEM_PROMPT` 常量。
-> 当前内容（与 Unit 1-9 累计版本一致）：
+> **以 `src/modem_log_analyzer/prompts.py` 的 `SYSTEM_PROMPT` 为准。**
+> 本节不维护全文快照（易漂移）；需要全文时用下方「调试：dump」命令。
 
-```python
-SYSTEM_PROMPT = """\
-You are **Modem Log Analyzer**, Atelier 平台下的 NuttX Modem 失败日志分析 Agent。
+关键段落（人类可读索引）：
 
-# Mission
-对一份**已切分好的单次执行** NuttX EVB 板端日志,自动识别 ModemCLI 命令与会话动作,
-还原业务状态,识别最早异常,形成受 schema 约束的 AnalysisResult。
-必要时通过 interrupt 请求同次执行的控制脚本日志;不会自行切分 loop 编号或读取
-未知协议栈细节。
-
-# Operating Principles
-1. **Evidence first**: 任何关键结论必须引用 ``EvidenceRef.ref_id``,
-   不得捏造文件、行号或时间戳。
-2. **Action awareness**: 使用项目级 ``knowledge/modemcli_commands.yaml`` 将命令映射为
-   Call / SMS / Data-Ping / Setting 业务动作;``modemcli`` 提示符本身不是业务动作。
-3. **Honest downgrade**: 未知命令、缺失终态、跨模块无因果时,不得以"未见 error"推出成功;
-   降级为 ``DEVICE_EVIDENCE_INCOMPLETE`` / ``MULTIPLE_POSSIBLE_CAUSES``。
-4. **One subagent**: 主代理委派单一职责的 diagnostician subagent; 深度 ≤ 2;
-   subagent 工具数 ≤ 5。
-5. **Schema-bound**: LLM 输出必须经 ``validate_analysis_draft`` 校验;
-   不通过则回到结构化草稿,不允许直接写文件。
-6. **Interrupt for control log**: 当 EVB 证据不足以解释外部 FAIL 时,
-   通过 LangGraph interrupt 请求同次执行的控制脚本日志;用户拒绝则诚实降级。
-7. **No destructive tools**: 不调用 bash / 通用 write_file / git_commit / git_push。
-   CLI 负责产物落盘;Agent 不直接写文件。
-8. **Trace privacy**: LangSmith trace 只记录结构化摘要,不上传原始日志正文或完整敏感值。
-
-# Output Format
-- 中文 (Plan §2 锁定)。
-- 关键结论引用 ``EV-NNNN`` 证据 ID; 不在响应正文直接复制原始日志。
-- 最终交付由确定性 renderer 从 ``AnalysisResult`` 渲染成 ``report.md``。
-
-# Constraints
-- 不引用其他 Agent (硬规矩 1)。
-- 不读取用户级 / 全局 Skills / MCP (硬规矩 8)。
-- prompt / subagent / tool 改动必须同步 ``docs/PROMPT.md`` 变更记录。
-- 单测 + 集成测试覆盖后,才能宣称完成 Unit。
-
-Begin.
-"""
-```
-
-> 实际值以 `prompts.py` 为准；本节作为人类可读的快照。
+1. `# Domain Context` — NuttX / 控制脚本 / Agent 三层 + `EV-NNNN` 不是 NuttX 原生
+2. `# Business Scope` — 通话 / 通话中叠加 / 短信 / Ping / 功能开关（人话 + RPC 组）
+3. `# Mission` / `# Operating Principles` / `# Tool Workflow` / `# Output Format`
+4. `# Timeline Spine Checklist` — Plan 2026-07-21-002 脊椎字段
+5. `# Constraints`
 
 ## 子代理提示词
 
 | Sub-agent        | 主要行为 |
 |------------------|----------|
-| `diagnostician`  | 受 schema 约束的诊断草稿生成；仅使用项目级工具 ≤ 5；不得调用危险工具 |
+| `diagnostician`  | Domain 边界（NuttX / 控制脚本 / EV-NNNN 预处理索引）+ schema 诊断草稿 + Timeline Spine；工具 ≤ 5；不得调用危险工具 |
 
 完整内容见 `prompts.py:SUBAGENT_PROMPTS["diagnostician"]`。
 
@@ -176,8 +138,11 @@ git commit -m "prompt(modem-log-analyzer): <summary>"
 | 2026-07-20 | 0.6.0 | OPERATIONS / EXAMPLES / PRIVACY / COMMAND_CATALOG / TESTING 5 份新文档；加厚 README/PROMPT/INTERRUPTS/MCP_AND_SKILLS | 用户要求详细文档 |
 | 2026-07-21 | 0.7.0 | Plan 2026-07-21-001 U5: SYSTEM_PROMPT 加 Operating Principles #9（CLI/Gateway 主路径必须 invoke Agent）；Tool Workflow 段锁定 4 只读工具；diagnostician 子代理提示词强约束"EV-NNNN 必须来自 bundle.evidence_refs，禁止假 ref"；subagents 默认模型改走 ATELIER_SUBAGENT_MODEL/ATELIER_DEFAULT_MODEL env | docs/plans/2026-07-21-001 U3/U5 主路径必须 invoke Agent；与 code-writer/compound-builder 模型对齐 |
 | 2026-07-21 | 0.8.0 | Plan 2026-07-21-002 U5: SYSTEM_PROMPT 新增「Timeline Spine Checklist」段（重建设备侧步骤时间线 + 标记故障步 + 领口字段按置信度齐备 + evidence_blocks 按步骤分块含 before/main/after + 禁止空壳 modemcli> + 禁止控制脚本源进 blocks + 必须先 validate_analysis_draft + 不要求 suggested_actions）；diagnostician 子代理提示词同步 spine 字段要求 | docs/plans/2026-07-21-002 U5：报告以设备侧失败时间线为叙事脊椎，spine 字段由 validate_analysis_draft 硬门禁 |
+| 2026-07-21 | 0.9.0 | SYSTEM_PROMPT / diagnostician / `_compose_human_message` 明确域边界：板端=NuttX；控制脚本=PC/测试框架；`EV-NNNN`=本分析器预处理证据索引（非 NuttX 协议/原生字段）。PROMPT.md 摘要改为索引式，全文以 prompts.py 为准 | 用户澄清：报告/对话里易把 EV-NNNN 误当成 NuttX 概念；与 ARCHITECTURE.md §0 对齐 |
+| 2026-07-21 | 0.10.0 | SYSTEM_PROMPT 新增 `# Business Scope`：打电话/接电话/挂断、通话中叠加操作、收发短信、数据/Ping、功能开关与状态设置；diagnostician 同步人话业务表；RPC 第一参数组索引写入 prompt | 用户指出业务此前只有 Call/SMS/Data-Ping/Setting 抽象标签，未用人话写清 |
 
 ## 评测
+
 
 - LangSmith Evaluator 接入方式（待 Unit 7 补）。
 - 推荐数据集：每类业务至少 1 个标注样例 + 多模块混合场景（待 Unit 7 补）。

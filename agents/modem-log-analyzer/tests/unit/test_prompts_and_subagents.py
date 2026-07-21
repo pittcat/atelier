@@ -55,6 +55,40 @@ def test_diagnostician_prompt_requires_real_ev_ids():
         assert f"``{bad}``" not in diag, f"diagnostician 不应把 {bad} 当工具"
 
 
+def test_system_prompt_declares_nuttx_and_ev_id_boundary():
+    """Domain: NuttX=板端；EV-NNNN=分析器预处理索引，非 NuttX 原生。"""
+    from modem_log_analyzer.prompts import SUBAGENT_PROMPTS, SYSTEM_PROMPT
+
+    text = SYSTEM_PROMPT
+    assert "Domain Context" in text
+    assert "NuttX" in text
+    assert "预处理" in text
+    assert "不是" in text and "NuttX" in text
+    # 明确 EV-NNNN 不是协议/原生字段
+    assert "协议" in text or "原生" in text
+    diag = SUBAGENT_PROMPTS["diagnostician"]
+    assert "NuttX" in diag
+    assert "预处理" in diag
+    assert "不是" in diag
+
+
+def test_system_prompt_declares_business_scope_in_plain_language():
+    """Business: 通话/短信/ping/开关用人话写清，不只是抽象枚举。"""
+    from modem_log_analyzer.prompts import SUBAGENT_PROMPTS, SYSTEM_PROMPT
+
+    text = SYSTEM_PROMPT
+    assert "Business Scope" in text
+    assert "打电话" in text or "接电话" in text
+    assert "通话中" in text
+    assert "短信" in text
+    assert "ping" in text.lower() or "Ping" in text
+    assert "开关" in text or "飞行模式" in text or "VoLTE" in text
+    diag = SUBAGENT_PROMPTS["diagnostician"]
+    assert "打电话" in diag or "接电话" in diag
+    assert "短信" in diag
+    assert "ping" in diag.lower() or "Ping" in diag
+
+
 def test_system_prompt_contains_timeline_spine_checklist():
     """Plan 2026-07-21-002 U5: SYSTEM_PROMPT 必须含 Timeline Spine 检查清单。"""
     from modem_log_analyzer.prompts import SYSTEM_PROMPT

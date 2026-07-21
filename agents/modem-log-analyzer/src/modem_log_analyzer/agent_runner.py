@@ -597,22 +597,30 @@ def _compose_human_message(bundle: dict) -> str:
     """
     has_control = bool(bundle.get("control_log_path"))
     parts = [
-        "请基于本 run 的预处理证据分析这次 NuttX EVB 失败日志。",
+        "请基于本 run 的预处理证据分析这次 **NuttX 板端** EVB 失败日志。",
+        "",
+        "## 域边界（先分清）",
+        "- 板端系统是 NuttX；EVB/merge 日志来自设备侧。",
+        "- 控制脚本日志（若有）来自 PC/测试框架，不是 NuttX。",
+        "- `EV-NNNN` 是**本分析器预处理**生成的证据索引号，**不是** NuttX 协议/原生字段；"
+        "只能引用 bundle.evidence_refs 里已有的 ID。",
         "",
         "## Run 元信息",
         f"- run_label: {bundle.get('run_label')}",
         f"- 已提供控制脚本日志: {'是' if has_control else '否'}",
         "",
         "## 工作流程",
-        "1. 调用 `get_preprocessed_bundle` 读取命令摘要与 evidence_refs (EV-NNNN)。",
-        "2. 需要更细原文时调用 `read_evb_log_slice(start_line, end_line)`。",
+        "1. 调用 `get_preprocessed_bundle` 读取命令摘要与预处理证据索引 "
+        "(EV-NNNN，非 NuttX 原生)。",
+        "2. 需要更细 NuttX EVB 原文时调用 `read_evb_log_slice(start_line, end_line)`。",
         "3. 若本 run 提供了控制脚本日志, 可调用 `read_control_log` 读取要点 (无需传参)。",
         "4. 推断场景 / 首异常 / 根因链, 形成 AnalysisResult 草稿。",
         "5. 调用 `validate_analysis_draft` 校验草稿; 不合法则回到第 4 步修正。",
         "6. **最终回复只发一段 JSON** (可包在 ```json ... ```), 不要附加解释。",
         "",
         "## 关键约束",
-        "- 所有 evidence_ref 必须引用真实 EV-NNNN (来自 bundle.evidence_refs)。",
+        "- 所有 evidence_ref 必须引用真实 EV-NNNN (来自 bundle.evidence_refs；"
+        "预处理索引，非 NuttX 原生)。",
         "- 分类必须是 6 枚举之一 (见 contracts.Classification)。",
         "- first_anomaly 必须是扁平结构: "
         "`{line_no, ref_id, summary, module?, ts?}` (不要套 evidence_ref)。",

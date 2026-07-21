@@ -38,6 +38,16 @@ A third-party LLM service that speaks the Anthropic Messages wire format (not Op
 
 The phenomenon where a shell session (zsh / bash) carries `ANTHROPIC_BASE_URL`, `OPENAI_API_KEY`, `HTTPS_PROXY` and similar variables from prior sessions or from `~/.zshrc`, causing a process that loads `.env` (even with `override=True`) to behave as if the file did not exist when the shell value was already set by an unrelated tool. Mitigation: log the active base URL on Agent startup so the discrepancy is visible immediately.
 
+## Modem log analyzer
+
+### Timeline Spine
+
+The failure-timeline-first narrative shape for `modem-log-analyzer` reports: reconstruct the device-side test flow as an ordered timeline, mark the failing step, and derive the report lead (confirmed impact / suspected root cause) and device-log evidence blocks from that timeline rather than from a long duplicated scenario essay. Avoid: treating empty timelines as acceptable when the lead claims a full failure story.
+
+### Device Log Evidence Block
+
+A step-grouped paste of EVB/device log raw text in the report (for example from `merge.log`), with the failing step block more complete and with before/after contrast. Control-script logs may inform external FAIL understanding but are not pasted as evidence blocks. Avoid: empty `modemcli>` prompts or EV IDs that do not match the claim text.
+
 ## Flagged ambiguities
 
 - "Agent" had been used for both the Claude Agent SDK concept and the Atelier-per-package concept; these are distinct. The Atelier Agent is a self-contained runnable package; the Claude Agent SDK is the underlying harness.
