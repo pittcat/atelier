@@ -173,19 +173,56 @@ def read_control_log_tool(max_lines: int = 2000) -> str:
 # 工具 3: 校验 LLM 返回的 AnalysisResult 草稿是否合法
 # ============================================================
 def validate_analysis_draft_tool(candidate: dict) -> str:
-    """Validate a candidate AnalysisResult draft against schema + spine rules."""
+    """Validate a candidate AnalysisResult draft against schema + spine rules.
+
+    失败时返回可操作修正指引 (而非只报错名), 避免 Agent 在校验循环里空转。
+    """
     from modem_log_analyzer.spine_validate import validate_analysis_draft
 
     result = validate_analysis_draft(candidate)
     if not result.is_valid:
-        return f"INVALID: {result.reason}"
+        return _invalid_feedback(candidate, result.reason)
     try:
         from modem_log_analyzer.contracts import AnalysisResult
 
         parsed = AnalysisResult.model_validate(candidate)
         return f"VALID classification={parsed.classification.value}"
     except Exception as e:  # noqa: BLE001
-        return f"INVALID: {e!s}"
+        return _invalid_feedback(candidate, f"schema: {e!s}")
+
+
+def _invalid_feedback(candidate: dict, reason: str) -> str:
+    """构造可操作的 INVALID 反馈: 报错 + 当前缺失字段 + 修正动作。"""
+    confidence = (candidate.get("root_cause_confidence") or "low").lower()
+    missing: list[str] = []
+    flow = candidate.get("flow_one_liner")
+    if not (isinstance(flow, str) and flow.strip()):
+        missing.append("flow_one_liner (流程摘要, 如 'data_ping + sms')")
+    src_rc = candidate.get("suspected_root_cause")
+    if not (isinstance(src_rc, str) and src_rc.strip()):
+        missing.append("suspected_root_cause (根因主张)")
+    if confidence == "low" and not (
+        isinstance(candidate.get("confirmed_impact"), str) and candidate["confirmed_impact"].strip()
+    ):
+        missing.append("confirmed_impact (低置信必填: 已确认的现象/影响)")
+    timeline = candidate.get("timeline") or []
+    if timeline and not any(
+        bool(ev.get("is_failure_step"))
+        for ev in timeline
+        if isinstance(ev, dict)
+    ):
+        missing.append("timeline 里至少一个事件设 is_failure_step=true (标记故障步)")
+
+    hint = (
+        "修正动作: 不要重复调用本工具校验同一草稿; 先补齐下列字段再校验。"
+        if missing else "修正动作: 检查 schema 字段类型/枚举值。"
+    )
+    fields = "; ".join(missing) if missing else "(见 reason)"
+    return (
+        f"INVALID: {reason}\n"
+        f"缺失/需补字段: {fields}\n"
+        f"{hint}"
+    )
 
 
 # ============================================================

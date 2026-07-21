@@ -232,46 +232,62 @@ def _extract_draft_from_messages(messages: list) -> dict | None:
     支持两种形态:
       1. content 是 str 且包含 JSON 代码块 (```json ... ```) 或裸 JSON。
       2. content 是 list, 逐项 text 内含 JSON。
+
+    Agent 委派 subagent 后, 末条消息可能是 ToolMessage / 总结文本而非 JSON,
+    真正的草稿常在前一条 assistant 消息里。因此从**末尾往前**扫描所有
+    assistant 消息, 取第一个含合法 JSON 的, 而不是只看 ``messages[-1]``。
     找不到合法 JSON → 返回 None (caller 决定报错)。
     """
     import re
 
     if not messages:
         return None
-    last = messages[-1]
-    # dict 形态
-    if isinstance(last, dict):
-        content = last.get("content")
-    else:
-        content = getattr(last, "content", None)
 
-    candidates: list[str] = []
-    if isinstance(content, str):
-        candidates.append(content)
-    elif isinstance(content, list):
-        for item in content:
-            if isinstance(item, dict):
-                txt = item.get("text") or item.get("content")
-                if isinstance(txt, str):
-                    candidates.append(txt)
-            elif isinstance(item, str):
-                candidates.append(item)
+    def _content_strs(msg: Any) -> list[str]:
+        if isinstance(msg, dict):
+            content = msg.get("content")
+        else:
+            content = getattr(msg, "content", None)
+        if isinstance(content, str):
+            return [content]
+        if isinstance(content, list):
+            out: list[str] = []
+            for item in content:
+                if isinstance(item, dict):
+                    txt = item.get("text") or item.get("content")
+                    if isinstance(txt, str):
+                        out.append(txt)
+                elif isinstance(item, str):
+                    out.append(item)
+            return out
+        return []
 
-    for txt in candidates:
-        # 优先匹配 ```json ... ``` 代码块
-        m = re.search(r"```json\s*(\{.*?\})\s*```", txt, flags=re.DOTALL)
-        if m:
-            try:
-                return json.loads(m.group(1))
-            except Exception:
-                pass
-        # 否则尝试提取首段 { ... }
-        m2 = re.search(r"(\{[\s\S]*\})", txt)
-        if m2:
-            try:
-                return json.loads(m2.group(1))
-            except Exception:
+    # 从末尾往前找含 JSON 的 assistant 消息
+    for msg in reversed(messages):
+        # 跳过 tool 消息 (它们是工具结果, 不是 Agent 草稿)
+        if isinstance(msg, dict):
+            if msg.get("type") == "tool" or msg.get("role") == "tool":
                 continue
+            mtype = msg.get("type") or msg.get("role")
+        else:
+            mtype = getattr(msg, "type", None) or getattr(msg, "role", None)
+        if mtype == "tool":
+            continue
+        for txt in _content_strs(msg):
+            # 优先匹配 ```json ... ``` 代码块
+            m = re.search(r"```json\s*(\{.*?\})\s*```", txt, flags=re.DOTALL)
+            if m:
+                try:
+                    return json.loads(m.group(1))
+                except Exception:
+                    pass
+            # 否则尝试提取首段 { ... }
+            m2 = re.search(r"(\{[\s\S]*\})", txt)
+            if m2:
+                try:
+                    return json.loads(m2.group(1))
+                except Exception:
+                    continue
     return None
 
 
@@ -599,6 +615,10 @@ def run_agent_analyze(
         # Checkpointer 强制要 thread_id (Plan U6 真实样本跑通): 缺省自动生成
         effective_thread_id = thread_id or f"modem-la-{uuid.uuid4().hex}"
         config["configurable"] = {"thread_id": effective_thread_id}
+        # recursion_limit: deepagents 每轮拆成 model/tools/middleware 多个 node,
+        # 默认 25 会过早超; 设 80 容纳 ~20 轮诊断循环, 同时兜底防止 validate
+        # 死循环时无限跑 (env 可覆盖)。
+        config["recursion_limit"] = int(os.getenv("MODEM_LOG_ANALYZER_RECURSION_LIMIT", "80"))
 
         try:
             from langchain_core.messages import HumanMessage

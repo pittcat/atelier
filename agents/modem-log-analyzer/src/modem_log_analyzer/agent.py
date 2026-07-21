@@ -85,6 +85,39 @@ def _try_import_skills_middleware():
             return None
 
 
+def _build_tool_exclusion_middleware() -> Any:
+    """排除 deepagents ``create_deep_agent`` 默认注入的内置工具。
+
+    deepagents 默认自带 ``write_todos`` / ``ls`` / ``read_file`` / ``write_file``
+    / ``edit_file`` / ``glob`` / ``grep`` / ``execute`` / ``task`` 等通用工具
+    (见 ``create_deep_agent`` docstring), 且 "Passing tools here is additive —
+    it never removes a built-in"。本 Agent 是只读日志分析器 (AGENTS.md 硬规矩 3),
+    工具表必须只有 ``build_tools()`` 的 4 个只读工具; 通用文件/shell/subagent-task
+    工具会让 LLM 乱翻代码库 (实测会去 grep/glob/ls), 违反只读边界。
+
+    用 ``_ToolExclusionMiddleware`` 在 ``wrap_model_call`` 阶段过滤, 不依赖
+    HarnessProfile 的 model-key 匹配 (代理后端 model identifier 不稳定)。
+    """
+    try:
+        from deepagents.middleware._tool_exclusion import _ToolExclusionMiddleware
+    except ImportError:
+        return None
+    excluded = frozenset(
+        {
+            "write_todos",
+            "ls",
+            "read_file",
+            "write_file",
+            "edit_file",
+            "glob",
+            "grep",
+            "execute",
+            "task",
+        }
+    )
+    return _ToolExclusionMiddleware(excluded=excluded)
+
+
 def build_agent() -> Any:
     """工厂函数：构造并返回编译好的 LangGraph 图。
 
@@ -120,6 +153,11 @@ def build_agent() -> Any:
                     middleware.append(SkillsMiddleware(skills=sources))
                 except Exception:
                     middleware = []
+
+    # 排除 deepagents 内置通用工具 (只读边界硬规矩)
+    exclusion = _build_tool_exclusion_middleware()
+    if exclusion is not None:
+        middleware.append(exclusion)
 
     agent = create(
         name="modem-log-analyzer",
