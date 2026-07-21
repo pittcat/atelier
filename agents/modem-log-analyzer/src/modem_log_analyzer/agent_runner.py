@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import uuid
 from pathlib import Path
@@ -496,6 +497,73 @@ def build_agent():  # pragma: no cover - 默认 delegate
 # ============================================================
 # 主入口
 # ============================================================
+def _invoke_with_progress(
+    agent: Any,
+    invoke_input: dict[str, Any],
+    config: dict[str, Any],
+) -> dict[str, Any]:
+    """``agent.invoke`` 的进度包装: 用 ``stream(stream_mode="updates")``
+    在每个 agent step 向 stderr 打进度, 让 CLI 用户能看到"还在跑、在干什么"。
+
+    仅当未设置 ``MODEM_LOG_ANALYZER_QUIET=1`` 时输出; 静默时退化为普通 invoke。
+    """
+    quiet = os.getenv("MODEM_LOG_ANALYZER_QUIET") == "true"
+    if quiet:
+        return agent.invoke(invoke_input, config=config or None)
+
+    final: dict[str, Any] = {}
+    step = 0
+    import time
+
+    started = time.time()
+    _emit = _emit_progress  # 本地别名
+    _emit(f"[agent] start invoke (model={os.getenv('ANTHROPIC_DEFAULT_OPUS_MODEL', '?')})")
+    for chunk in agent.stream(invoke_input, config=config or None, stream_mode="updates"):
+        step += 1
+        elapsed = time.time() - started
+        # updates 模式: chunk = {node_name: state_dict}
+        for node_name, state in (chunk or {}).items():
+            msgs = (state or {}).get("messages") or []
+            last = msgs[-1] if msgs else None
+            kind = type(last).__name__ if last is not None else "-"
+            # 工具调用 / 工具结果 / AI 消息
+            summary = ""
+            if last is not None:
+                tcalls = getattr(last, "tool_calls", None) or []
+                tname = getattr(last, "name", None)
+                if tcalls:
+                    summary = ",".join(c.get("name", "?") for c in tcalls)
+                elif tname:
+                    summary = f"tool={tname}"
+                else:
+                    content = getattr(last, "content", "") or ""
+                    summary = (content[:60] + "…") if len(str(content)) > 60 else str(content)
+            _emit(
+                f"[agent] step {step} ({elapsed:.1f}s) node={node_name} "
+                f"msg={kind} {summary}"
+            )
+        if isinstance(chunk, dict):
+            # 末个 chunk 通常含完整 state
+            for v in chunk.values():
+                if isinstance(v, dict) and "messages" in v:
+                    final = v
+    if not final:
+        # fallback: 重新 invoke 一次 (理论上不会到这; stream 已累积)
+        final = agent.invoke(invoke_input, config=config or None)
+    _emit(f"[agent] done in {time.time() - started:.1f}s ({step} steps)")
+    return final
+
+
+def _emit_progress(msg: str) -> None:
+    """向 stderr 打进度 (与 cli 的 click.echo 一致; 不污染 stdout JSON)。"""
+    if os.getenv("MODEM_LOG_ANALYZER_QUIET") == "true":
+        return
+    import sys
+
+    sys.stderr.write(msg + "\n")
+    sys.stderr.flush()
+
+
 def run_agent_analyze(
     *,
     evb_log_path: str,
@@ -542,7 +610,7 @@ def run_agent_analyze(
         human_msg = _compose_human_message(bundle)
         try:
             invoke_input: dict[str, Any] = {"messages": [HumanMessage(content=human_msg)]}
-            result = agent.invoke(invoke_input, config=config or None)
+            result = _invoke_with_progress(agent, invoke_input, config)
         except Exception as e:
             logger.exception("agent.invoke failed")
             raise RuntimeError(f"agent invoke failed: {e}") from e
