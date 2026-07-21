@@ -1,0 +1,161 @@
+{
+  "schema_version": "0.1.0",
+  "run_label": "auto_case_modem_52_loop75",
+  "classification": "DEVICE_EVIDENCE_INCOMPLETE",
+  "root_cause_confidence": "low",
+  "scenario": "Data/Ping + SMS: 板端 ping 首包超时后多数恢复, 同窗 SMS 发送成功。",
+  "scenario_confidence": "medium",
+  "flow_one_liner": "Data 检查 → !ping -c 60 → SMS(debug_bes_rpc 4)",
+  "confirmed_impact": "外部测试 FAIL: 控制脚本在 ping 60s 窗口结束时报告 ping state=1 fail; 板端首包 icmp_seq=0 超时 1000ms, 后续 icmp_seq=1..59 绝大多数恢复。",
+  "suspected_root_cause": "板端 ping 首包 DNS/链路建立瞬时延迟导致首包超时; 是否足以触发控制脚本 FAIL 仍需对照 ping 汇总行与 sleep 窗口。",
+  "first_anomaly": {
+    "step": "ping",
+    "line_no": 47,
+    "ref_id": "EV-0002",
+    "summary": "板端 No response from 14.215.182.217 icmp_seq=0 time=1000ms",
+    "module": "modemcli",
+    "ts": "2026-05-27 13:34:12.605"
+  },
+  "evidence_refs": [
+    {
+      "ref_id": "EV-0001",
+      "source": "merge.log",
+      "line_no": 45,
+      "timestamp": "2026-05-27 13:34:12.397",
+      "raw_text": "2026-05-27 [21:34:12.397632] modemcli> !ping -c 60 map.baidu.com &",
+      "module": "modemcli"
+    },
+    {
+      "ref_id": "EV-0002",
+      "source": "merge.log",
+      "line_no": 47,
+      "timestamp": "2026-05-27 13:34:12.605",
+      "raw_text": "2026-05-27 [21:34:12.605222] modemcli> No response from 14.215.182.217: icmp_seq=0 time=1000 ms",
+      "module": "modemcli"
+    },
+    {
+      "ref_id": "EV-0003",
+      "source": "merge.log",
+      "line_no": 50,
+      "timestamp": "2026-05-27 13:34:13.615",
+      "raw_text": "2026-05-27 [21:34:13.615249] 56 bytes from 14.215.182.217: icmp_seq=1 time=121.5 ms",
+      "module": "ping"
+    },
+    {
+      "ref_id": "EV-0004",
+      "source": "merge.log",
+      "line_no": 80,
+      "timestamp": "2026-05-27 13:34:34.331",
+      "raw_text": "2026-05-27 [21:34:34.331612] modemcli> debug_bes_rpc 4 1 17748682117 hello_2026_05_27_21_34_02",
+      "module": "modemcli"
+    },
+    {
+      "ref_id": "EV-0005",
+      "source": "merge.log",
+      "line_no": 207,
+      "timestamp": "2026-05-27 13:34:34.701",
+      "raw_text": "2026-05-27 [21:34:34.701134] [ 8283.487300] [37] [apc1] IMS_MMF: INFO: PMsgReportStat message@[0xA5] status<PMSG SEND OK> sms type<RPDATA>.",
+      "module": "apc1"
+    }
+  ],
+  "timeline": [
+    {
+      "ts": "2026-05-27 13:34:12.397",
+      "event": "板端启动 !ping -c 60 map.baidu.com",
+      "ref_id": "EV-0001",
+      "source_module": "modemcli",
+      "kind": "command",
+      "step_label": "ping",
+      "is_failure_step": false
+    },
+    {
+      "ts": "2026-05-27 13:34:12.605",
+      "event": "首包 No response icmp_seq=0 超时 1000ms (故障步)",
+      "ref_id": "EV-0002",
+      "source_module": "modemcli",
+      "kind": "failure",
+      "step_label": "ping",
+      "is_failure_step": true
+    },
+    {
+      "ts": "2026-05-27 13:34:13.615",
+      "event": "icmp_seq=1 恢复 121.5ms (后续多数恢复)",
+      "ref_id": "EV-0003",
+      "source_module": "ping",
+      "kind": "recovery",
+      "step_label": "ping",
+      "is_failure_step": false
+    },
+    {
+      "ts": "2026-05-27 13:34:34.331",
+      "event": "板端发起 SMS debug_bes_rpc 4",
+      "ref_id": "EV-0004",
+      "source_module": "modemcli",
+      "kind": "command",
+      "step_label": "sms",
+      "is_failure_step": false
+    },
+    {
+      "ts": "2026-05-27 13:34:34.701",
+      "event": "IMS_MMF PMsgReportStat SEND OK (SMS 成功)",
+      "ref_id": "EV-0005",
+      "source_module": "apc1",
+      "kind": "success",
+      "step_label": "sms",
+      "is_failure_step": false
+    }
+  ],
+  "evidence_blocks": [
+    {
+      "step_label": "ping",
+      "is_failure_step": true,
+      "role": "before",
+      "ref_ids": ["EV-0001"]
+    },
+    {
+      "step_label": "ping",
+      "is_failure_step": true,
+      "role": "main",
+      "ref_ids": ["EV-0002"]
+    },
+    {
+      "step_label": "ping",
+      "is_failure_step": true,
+      "role": "after",
+      "ref_ids": ["EV-0003"]
+    },
+    {
+      "step_label": "sms",
+      "is_failure_step": false,
+      "role": "main",
+      "ref_ids": ["EV-0004", "EV-0005"]
+    }
+  ],
+  "root_cause_chain": [
+    {
+      "role": "trigger",
+      "description": "ping 首包超时 (疑似 DNS/链路建立延迟)",
+      "ref_ids": ["EV-0002"],
+      "gap": null
+    },
+    {
+      "role": "propagation",
+      "description": "控制脚本 60s 窗口结束判定 ping fail",
+      "ref_ids": [],
+      "gap": "控制脚本原文不进证据块, 仅作摘要"
+    },
+    {
+      "role": "terminal_impact",
+      "description": "外部测试 FAIL",
+      "ref_ids": [],
+      "gap": null
+    }
+  ],
+  "control_log_used": true,
+  "external_result": "FAIL",
+  "notes": [
+    "本草稿按 Timeline Spine 目标结构构造, 用于验收 renderer, 非真实 Agent 输出。",
+    "控制脚本原文(control_script.log)未进入 evidence_blocks。"
+  ],
+  "suggested_actions": []
+}
