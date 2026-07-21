@@ -55,6 +55,49 @@ def test_diagnostician_prompt_requires_real_ev_ids():
         assert f"``{bad}``" not in diag, f"diagnostician 不应把 {bad} 当工具"
 
 
+def test_system_prompt_contains_timeline_spine_checklist():
+    """Plan 2026-07-21-002 U5: SYSTEM_PROMPT 必须含 Timeline Spine 检查清单。"""
+    from modem_log_analyzer.prompts import SYSTEM_PROMPT
+
+    text = SYSTEM_PROMPT
+    assert "Timeline Spine" in text
+    # 关键 spine 字段
+    assert "flow_one_liner" in text
+    assert "confirmed_impact" in text
+    assert "suspected_root_cause" in text
+    assert "evidence_blocks" in text
+    assert "is_failure_step" in text
+    # 故障步前后对照
+    assert "before" in text and "after" in text
+    # 禁止空壳 + 禁止控制脚本进 blocks
+    assert "空壳" in text or "modemcli" in text
+    assert "control_script" in text or "控制脚本" in text
+    # 必须先 validate
+    assert "validate_analysis_draft" in text
+
+
+def test_diagnostician_prompt_contains_spine_requirements():
+    """Plan 2026-07-21-002 U5: diagnostician 提示词须含 spine 字段要求。"""
+    from modem_log_analyzer.prompts import SUBAGENT_PROMPTS
+
+    diag = SUBAGENT_PROMPTS["diagnostician"]
+    assert "Timeline Spine" in diag
+    assert "evidence_blocks" in diag
+    assert "is_failure_step" in diag
+    assert "flow_one_liner" in diag
+
+
+def test_prompts_doc_change_record_has_spine_entry():
+    """PROMPT.md 必须含 Timeline Spine 变更记录 (硬规矩 3)。"""
+    docs = ROOT / "docs" / "PROMPT.md"
+    if not docs.exists():
+        return
+    text = docs.read_text(encoding="utf-8")
+    assert "Timeline Spine" in text or "2026-07-21-002" in text, (
+        "docs/PROMPT.md 必须含 Timeline Spine 变更记录"
+    )
+
+
 def test_prompts_doc_change_record_present():
     """PROMPT.md 必须在最近一次 prompt 改动后追加变更记录 (硬规矩 3)。"""
     docs = ROOT / "docs" / "PROMPT.md"
@@ -116,8 +159,8 @@ def test_analysis_service_rules_pipeline_tag():
 # ============================================================
 def test_subagent_tools_match_main_agent():
     """diagnostician 与主代理共享同一只读工具表 (防止工具表漂移)。"""
-    from modem_log_analyzer.tools import build_tools
     from modem_log_analyzer.subagents import _diagnostician_tools
+    from modem_log_analyzer.tools import build_tools
 
     main_names = sorted(t.name for t in build_tools())
     sub_names = sorted(t.name for t in _diagnostician_tools())

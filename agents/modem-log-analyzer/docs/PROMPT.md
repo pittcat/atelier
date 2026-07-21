@@ -175,6 +175,7 @@ git commit -m "prompt(modem-log-analyzer): <summary>"
 | 2026-07-19 | 0.5.0 | Unit 7-9: 风险驱动测试套件 + 参考样例 + Gateway 接入 | 完成 plan 全部 9 个 Unit |
 | 2026-07-20 | 0.6.0 | OPERATIONS / EXAMPLES / PRIVACY / COMMAND_CATALOG / TESTING 5 份新文档；加厚 README/PROMPT/INTERRUPTS/MCP_AND_SKILLS | 用户要求详细文档 |
 | 2026-07-21 | 0.7.0 | Plan 2026-07-21-001 U5: SYSTEM_PROMPT 加 Operating Principles #9（CLI/Gateway 主路径必须 invoke Agent）；Tool Workflow 段锁定 4 只读工具；diagnostician 子代理提示词强约束"EV-NNNN 必须来自 bundle.evidence_refs，禁止假 ref"；subagents 默认模型改走 ATELIER_SUBAGENT_MODEL/ATELIER_DEFAULT_MODEL env | docs/plans/2026-07-21-001 U3/U5 主路径必须 invoke Agent；与 code-writer/compound-builder 模型对齐 |
+| 2026-07-21 | 0.8.0 | Plan 2026-07-21-002 U5: SYSTEM_PROMPT 新增「Timeline Spine Checklist」段（重建设备侧步骤时间线 + 标记故障步 + 领口字段按置信度齐备 + evidence_blocks 按步骤分块含 before/main/after + 禁止空壳 modemcli> + 禁止控制脚本源进 blocks + 必须先 validate_analysis_draft + 不要求 suggested_actions）；diagnostician 子代理提示词同步 spine 字段要求 | docs/plans/2026-07-21-002 U5：报告以设备侧失败时间线为叙事脊椎，spine 字段由 validate_analysis_draft 硬门禁 |
 
 ## 评测
 
