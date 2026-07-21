@@ -30,6 +30,21 @@ for d in _templates/agent-template agents gateway/api libs/common ops infrastruc
   if [ -d "$d" ]; then pass "目录 $d"; else fail "缺少目录: $d"; fi
 done
 
+# Agent 目录 slug 用连字符, 禁止 agents/foo_bar (Python 包名才用 underscore)
+bad_agent_dirs=""
+for d in agents/*/; do
+  [ -d "$d" ] || continue
+  name="$(basename "$d")"
+  case "$name" in
+    *_*) bad_agent_dirs="$bad_agent_dirs $name" ;;
+  esac
+done
+if [ -z "$bad_agent_dirs" ]; then
+  pass "agents/ 目录名均用连字符 (无 underscore slug)"
+else
+  fail "agents/ 禁止 underscore 目录名:$bad_agent_dirs (应用 hyphen, 如 modem-log-analyzer)"
+fi
+
 # -----------------------------------------------------------------
 header "3. Cookiecutter 模板"
 # -----------------------------------------------------------------

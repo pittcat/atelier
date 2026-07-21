@@ -80,7 +80,7 @@ modem-log-analyzer analyze \
   --label "loop_52"
 
 # dry-run：仅做输入校验
-modem-log_analyzer analyze --evb-log evb.log --output out --dry-run
+modem-log-analyzer analyze --evb-log evb.log --output out --dry-run
 
 # 显式授权覆盖已有产物
 modem-log-analyzer analyze --evb-log evb.log --output out --overwrite

@@ -35,6 +35,23 @@ def test_example_agent_exists():
     assert (cwd / "Makefile").exists()
 
 
+def test_agent_dirs_use_hyphen_not_underscore():
+    """Agent 目录 slug 必须用连字符 (modem-log-analyzer), 禁止下划线目录名。
+
+    Python import 包名可以是 underscore (modem_log_analyzer), 但 agents/<slug>/
+    约定与 gateway registry 一致, 一律 hyphen。曾误留 agents/modem-log_analyzer/
+    与完整包并存, 用本断言防回归。
+    """
+    agents_root = ROOT / "agents"
+    assert agents_root.is_dir()
+    bad = sorted(
+        p.name for p in agents_root.iterdir() if p.is_dir() and "_" in p.name
+    )
+    assert bad == [], (
+        f"agents/ 下禁止含下划线的目录 (应用 hyphen): {bad}"
+    )
+
+
 def test_example_agent_no_push_in_tools():
     """git_push / shell_push 不能作为工具注册到 main agent。
 
