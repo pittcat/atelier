@@ -85,3 +85,101 @@ def test_run_request_accepts_minimal_valid_input():
     assert req.label is None
     assert req.overwrite is False
     assert req.thread_id is None
+
+
+# ============================================================
+# Timeline Spine 字段 (Plan 2026-07-21-002 / U2)
+# ============================================================
+
+
+def test_timeline_event_optional_spine_fields_default():
+    """TimelineEvent 新增 spine 字段缺省值兼容旧最小结果。"""
+    c = _import_contracts()
+    ev = c.TimelineEvent(event="x", ref_id="EV-1")
+    assert ev.is_failure_step is False
+    assert ev.step_label is None
+    assert ev.kind is None
+
+
+def test_timeline_event_accepts_spine_fields():
+    c = _import_contracts()
+    ev = c.TimelineEvent(
+        event="首包超时",
+        ref_id="EV-2",
+        kind="failure",
+        step_label="ping",
+        is_failure_step=True,
+    )
+    assert ev.is_failure_step is True
+    assert ev.kind == "failure"
+    assert ev.step_label == "ping"
+
+
+def test_evidence_block_minimal():
+    c = _import_contracts()
+    b = c.EvidenceBlock(step_label="ping")
+    assert b.step_label == "ping"
+    assert b.is_failure_step is False
+    assert b.role == "main"
+    assert b.ref_ids == []
+
+
+def test_analysis_result_accepts_spine_fields():
+    """AnalysisResult 接受 spine 字段; 旧最小结果仍兼容。"""
+    c = _import_contracts()
+    r = c.AnalysisResult(
+        schema_version=c.ANALYSIS_SCHEMA_VERSION,
+        classification=c.Classification.DEVICE_EVIDENCE_INCOMPLETE,
+        root_cause_confidence="low",
+        flow_one_liner="Data 检查 -> ping -> SMS",
+        confirmed_impact="外部 FAIL: ping 首包超时",
+        suspected_root_cause="疑似 DNS 延迟",
+        timeline=[
+            c.TimelineEvent(
+                event="首包超时",
+                ref_id="EV-1",
+                kind="failure",
+                step_label="ping",
+                is_failure_step=True,
+            )
+        ],
+        evidence_blocks=[
+            c.EvidenceBlock(step_label="ping", is_failure_step=True, role="main", ref_ids=["EV-1"]),
+        ],
+    )
+    assert r.flow_one_liner == "Data 检查 -> ping -> SMS"
+    assert r.confirmed_impact is not None
+    assert r.suspected_root_cause is not None
+    assert r.evidence_blocks[0].is_failure_step is True
+    assert r.timeline[0].is_failure_step is True
+
+
+def test_analysis_result_rejects_unknown_spine_field():
+    """extra=forbid 仍然生效: 未知字段被拒。"""
+    from pydantic import ValidationError
+
+    c = _import_contracts()
+    bad: dict[str, Any] = {
+        "schema_version": c.ANALYSIS_SCHEMA_VERSION,
+        "classification": "DEVICE_EVIDENCE_INCOMPLETE",
+        "root_cause_confidence": "low",
+        "not_a_real_field": 1,
+    }
+    with pytest.raises(ValidationError):
+        c.AnalysisResult.model_validate(bad)
+
+
+def test_fixture_case52_draft_validates():
+    """U1 case52 fixture 必须可被 AnalysisResult.model_validate 接受。"""
+    import json
+
+    c = _import_contracts()
+    fixture = ROOT / "tests" / "fixtures" / "reports" / "timeline_spine_case52_draft.json"
+    with fixture.open(encoding="utf-8") as f:
+        data = json.load(f)
+    r = c.AnalysisResult.model_validate(data)
+    assert r.flow_one_liner is not None
+    assert r.confirmed_impact is not None
+    assert r.suspected_root_cause is not None
+    assert any(ev.is_failure_step for ev in r.timeline)
+    assert r.evidence_blocks

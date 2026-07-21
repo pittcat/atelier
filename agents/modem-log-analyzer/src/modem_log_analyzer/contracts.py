@@ -118,6 +118,10 @@ class TimelineEvent(BaseModel):
       - event: 一句话描述
       - ref_id: 指向 EvidenceRef.ref_id
       - source_module:  来源模块
+      - kind:       事件类型 (command/failure/recovery/success/omitted_summary/ping_burst 等)
+                    可选; 由 renderer 与 validator 共享语义。
+      - step_label:  所属测试步骤标签 (如 "ping"/"sms"); 与 EvidenceBlock.step_label 对齐。
+      - is_failure_step: 是否为故障步 (出问题的那一步)。脊椎标记。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -126,6 +130,34 @@ class TimelineEvent(BaseModel):
     event: str
     ref_id: str
     source_module: str | None = None
+    kind: str | None = None
+    step_label: str | None = None
+    is_failure_step: bool = False
+
+
+# ============================================================
+# 设备 log 证据分块 (Timeline Spine)
+# ============================================================
+class EvidenceBlock(BaseModel):
+    """按测试步骤组织的设备 log 证据分块。
+
+    字段:
+      - step_label:        测试步骤标签 (与 TimelineEvent.step_label 对齐)
+      - is_failure_step:   是否故障步块 (故障步块更详, 含前后对照)
+      - role:              块角色: "main" | "before" | "after"
+                          - main: 故障/步骤主块
+                          - before: 故障步前对照
+                          - after:  故障步后对照
+      - ref_ids:           引用的 EvidenceRef.ref_id 列表 (仅设备侧)
+                          控制脚本来源的 ref 不得进入此列表。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    step_label: str
+    is_failure_step: bool = False
+    role: str = "main"
+    ref_ids: list[str] = Field(default_factory=list)
 
 
 # ============================================================
@@ -178,6 +210,26 @@ class AnalysisResult(BaseModel):
     timeline: list[TimelineEvent] = Field(default_factory=list)
     root_cause_chain: list[CausalChainLink] = Field(default_factory=list)
 
+    # ------------------------------------------------------------
+    # Timeline Spine 字段 (Plan 2026-07-21-002). 全部可选, 向后兼容。
+    # ------------------------------------------------------------
+    flow_one_liner: str | None = Field(
+        default=None,
+        description="一行短流程摘要, 例如 'Data 检查 -> ping -> SMS' (R4/S1)",
+    )
+    confirmed_impact: str | None = Field(
+        default=None,
+        description="已确认的现象/影响 (R2/S1); 低置信时领口先陈述此字段。",
+    )
+    suspected_root_cause: str | None = Field(
+        default=None,
+        description="疑似根因 (R2/S1); 低置信时须用「疑似」措辞。",
+    )
+    evidence_blocks: list[EvidenceBlock] = Field(
+        default_factory=list,
+        description="按测试步骤组织的设备 log 证据分块 (R9-R12/S4); 控制脚本源不得进入。",
+    )
+
     control_log_used: bool = Field(
         default=False,
         description="是否使用了控制脚本日志(用于解释 TEST_AUTOMATION_FAILURE_CONFIRMED 的来源)",
@@ -195,6 +247,7 @@ __all__ = [
     "RunRequest",
     "EvidenceRef",
     "TimelineEvent",
+    "EvidenceBlock",
     "CausalChainLink",
     "AnalysisResult",
 ]
