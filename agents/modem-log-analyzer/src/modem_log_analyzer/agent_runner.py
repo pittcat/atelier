@@ -569,6 +569,13 @@ def run_agent_analyze(
         _validate_refs_against_bundle(payload, bundle)
         _enforce_automation_classification(payload, bundle)
 
+        # 三次校验: Timeline Spine 门禁 (Plan 2026-07-21-002 / U4)
+        from modem_log_analyzer.spine_validate import validate_analysis_draft
+
+        spine_result = validate_analysis_draft(payload)
+        if not spine_result.is_valid:
+            raise ValueError(f"INVALID: draft spine check failed: {spine_result.reason}")
+
         return _attach_render_extras(
             payload,
             bundle,

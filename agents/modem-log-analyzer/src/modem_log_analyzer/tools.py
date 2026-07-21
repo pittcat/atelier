@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 
 # ============================================================
@@ -174,14 +173,19 @@ def read_control_log_tool(max_lines: int = 2000) -> str:
 # 工具 3: 校验 LLM 返回的 AnalysisResult 草稿是否合法
 # ============================================================
 def validate_analysis_draft_tool(candidate: dict) -> str:
-    """Validate a candidate AnalysisResult draft against the public schema."""
-    from modem_log_analyzer.contracts import AnalysisResult
+    """Validate a candidate AnalysisResult draft against schema + spine rules."""
+    from modem_log_analyzer.spine_validate import validate_analysis_draft
 
+    result = validate_analysis_draft(candidate)
+    if not result.is_valid:
+        return f"INVALID: {result.reason}"
     try:
-        result = AnalysisResult.model_validate(candidate)
-    except Exception as e:
+        from modem_log_analyzer.contracts import AnalysisResult
+
+        parsed = AnalysisResult.model_validate(candidate)
+        return f"VALID classification={parsed.classification.value}"
+    except Exception as e:  # noqa: BLE001
         return f"INVALID: {e!s}"
-    return f"VALID classification={result.classification.value}"
 
 
 # ============================================================

@@ -69,8 +69,8 @@ def _build_fake_graph(replies: list[dict]):
 # ============================================================
 def test_runner_uses_agent_invoke(monkeypatch, tmp_path):
     """runner 必须 set run_context + invoke agent; 不是直接走 AnalysisService。"""
-    from modem_log_analyzer import agent_runner, run_context as rc
-    from modem_log_analyzer import contracts
+    from modem_log_analyzer import agent_runner, contracts
+    from modem_log_analyzer import run_context as rc
 
     evb = _write_evb(tmp_path)
     out_dir = tmp_path / "out"
@@ -131,7 +131,8 @@ def test_runner_uses_agent_invoke(monkeypatch, tmp_path):
 
 def test_runner_rejects_invalid_draft(monkeypatch, tmp_path):
     """LLM 返回的草稿若缺字段, runner 必须拒绝 (非静默回退)。"""
-    from modem_log_analyzer import agent_runner, run_context as rc
+    from modem_log_analyzer import agent_runner
+    from modem_log_analyzer import run_context as rc
 
     evb = _write_evb(tmp_path)
     out_dir = tmp_path / "out"
@@ -162,8 +163,8 @@ def test_runner_rejects_invalid_draft(monkeypatch, tmp_path):
 
 def test_runner_rejects_fake_evidence_ref(monkeypatch, tmp_path):
     """Agent 草稿里出现 preprocess 没有的 EV-NNNN → 拒绝。"""
-    from modem_log_analyzer import agent_runner, run_context as rc
-    from modem_log_analyzer import contracts
+    from modem_log_analyzer import agent_runner, contracts
+    from modem_log_analyzer import run_context as rc
 
     evb = _write_evb(tmp_path)
     out_dir = tmp_path / "out"
@@ -215,7 +216,8 @@ def test_runner_rejects_fake_evidence_ref(monkeypatch, tmp_path):
 
 def test_runner_surfaces_invoke_error(monkeypatch, tmp_path):
     """agent.invoke 抛错 → runner 抛错 (不静默)。"""
-    from modem_log_analyzer import agent_runner, run_context as rc
+    from modem_log_analyzer import agent_runner
+    from modem_log_analyzer import run_context as rc
 
     evb = _write_evb(tmp_path)
     out_dir = tmp_path / "out"
@@ -247,7 +249,8 @@ def test_runner_surfaces_invoke_error(monkeypatch, tmp_path):
 
 def test_runner_dry_run_does_not_invoke(monkeypatch, tmp_path):
     """dry_run=True: 不调 LLM, 不写产物, 但能拿到 preprocess 摘要。"""
-    from modem_log_analyzer import agent_runner, run_context as rc
+    from modem_log_analyzer import agent_runner
+    from modem_log_analyzer import run_context as rc
 
     evb = _write_evb(tmp_path)
     out_dir = tmp_path / "out"
@@ -340,7 +343,8 @@ def test_normalize_messy_agent_draft_fills_report_fields(tmp_path):
 
 def test_runner_normalizes_and_persists_meta(monkeypatch, tmp_path):
     """invoke 后规范化 + atomic_write 保留 _meta.runner。"""
-    from modem_log_analyzer import agent_runner, run_context as rc
+    from modem_log_analyzer import agent_runner
+    from modem_log_analyzer import run_context as rc
     from modem_log_analyzer.report import atomic_write_artifacts
 
     evb = _write_evb(tmp_path)
@@ -369,6 +373,29 @@ def test_runner_normalizes_and_persists_meta(monkeypatch, tmp_path):
             "evidence_ref": {"ref_id": rid, "raw_text": "x"},
             "note": "timeout",
         },
+        # Timeline Spine (U4): 声称板端偏离时须有 timeline + 故障步
+        "timeline": [
+            {
+                "ts": "2026-07-21 10:00:00.000",
+                "event": "板端回调 ERROR (故障步)",
+                "ref_id": rid,
+                "source_module": "apc1",
+                "kind": "failure",
+                "step_label": "ping",
+                "is_failure_step": True,
+            }
+        ],
+        "evidence_blocks": [
+            {
+                "step_label": "ping",
+                "is_failure_step": True,
+                "role": "main",
+                "ref_ids": [rid],
+            }
+        ],
+        "flow_one_liner": "ping → fail",
+        "confirmed_impact": "外部 FAIL",
+        "suspected_root_cause": "板端超时",
         "root_cause_chain": [],
         "notes": [],
     }
@@ -407,8 +434,10 @@ def test_runner_normalizes_and_persists_meta(monkeypatch, tmp_path):
 
 
 def test_runner_rejects_automation_without_control_evidence(monkeypatch, tmp_path):
-    from modem_log_analyzer import agent_runner, run_context as rc
     import pytest
+
+    from modem_log_analyzer import agent_runner
+    from modem_log_analyzer import run_context as rc
 
     evb = _write_evb(tmp_path)
     out_dir = tmp_path / "out"
