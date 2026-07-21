@@ -261,6 +261,18 @@ def test_render_analysis_json_roundtrip():
     assert obj["first_anomaly"]["ref_id"] == "EV-0003"
 
 
+def test_render_analysis_json_keeps_meta():
+    """落盘 analysis.json 必须保留 ``_meta.runner`` 以证明 Agent 路径。"""
+    from modem_log_analyzer.report import render_analysis_json
+
+    result = _make_minimal_result()
+    result["_meta"] = {"runner": "agent_runner", "dry_run": False}
+    result["_private"] = "strip-me"
+    obj = json.loads(render_analysis_json(result))
+    assert obj["_meta"]["runner"] == "agent_runner"
+    assert "_private" not in obj
+
+
 # ============================================================
 # 原子写入
 # ============================================================

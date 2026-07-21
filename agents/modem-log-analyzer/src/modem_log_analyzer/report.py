@@ -348,7 +348,11 @@ def _render_evidence_index(result: dict) -> str:
 
 def render_analysis_json(result: dict[str, Any]) -> str:
     _validate_evidence_refs(result)
+    # 保留 ``_meta`` (runner / interrupt / backend 证明); 其它 ``_`` 私有键仍剥离
     payload = {k: v for k, v in result.items() if not k.startswith("_")}
+    meta = result.get("_meta")
+    if meta is not None:
+        payload["_meta"] = meta
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=False)
 
 

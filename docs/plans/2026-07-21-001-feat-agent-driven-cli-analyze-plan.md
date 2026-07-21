@@ -1,7 +1,7 @@
 ---
 title: "feat: Wire modem-log-analyzer CLI/Gateway to real AI Agent diagnosis"
 type: feat
-status: active
+status: completed
 date: 2026-07-21
 origin: docs/brainstorms/2026-07-19-nuttx-modem-loop-failure-analysis-agent-requirements.md
 related_plan: docs/plans/2026-07-19-001-feat-modem-log-analyzer-cli-plan.md
