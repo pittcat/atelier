@@ -125,3 +125,26 @@ agents/<slug>/
 ---
 
 > 改动这份文档请提 PR，描述改动原因；不接受 silent edit。
+<!-- RALPH-BOOTSTRAP-START: ralph-pipeline v1 -->
+## Ralph Pipeline Suite
+
+This project carries a Ralph pipeline suite bootstrapped by `ralph-project-bootstrap`.
+
+| File | Purpose |
+|------|---------|
+| `ralph.pipeline.yml` | Runtime config (owned keys under `_bootstrap:`) |
+| `PROMPT.pipeline.md` | Managed fallback prompt (plan required via `--plan`) |
+| `ralph.bootstrap.yml` | Provenance record |
+
+**Verification commands** (must pass before reporting completion):
+
+- `make test` — pytest
+- `make lint` — ruff check + mypy
+- `make smoke` — structural integrity
+
+**Launch** (requires a real plan file):
+
+```bash
+ralph -c ralph.pipeline.yml -H builtin:ce-executor-pipeline run --plan <PLAN_PATH>
+```
+<!-- RALPH-BOOTSTRAP-END: ralph-pipeline -->
